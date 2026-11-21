@@ -445,6 +445,141 @@ async function handleClaim(body, context) {
 }
 
 
+async function handlePaymentSubmit(body) {
+  // 1. Validate paper ID and payment token
+  const paperId = cleanText(body.paperId, 80);
+  const token = String(body.token || '');
+
+  if (!paperId || !token) {
+    return json({
+      error: 'Paper ID and payment token are required.'
+    }, 400);
+  }
+
+  // 2. Verify payment link and manuscript status
+  const paper = await getPaymentPaper(paperId, token);
+
+  if (!paper) {
+    return json({
+      error: 'This payment link is invalid or expired. Contact the editorial office for a fresh link.'
+    }, 401);
+  }
+
+  // 3. Validate the 12-digit UTR
+  const utr = String(body.utr || '').trim();
+
+  if (!validatePaymentUtr(utr)) {
+    return json({
+      error: 'Enter a valid 12-digit UTR / transaction reference.'
+    }, 400);
+  }
+
+  // 4. Confirm payment configuration exists
+  const config = getPaymentConfig();
+
+  if (!config.ready) {
+    return json({
+      error: 'UPI payment details are not configured. Contact the editorial office.'
+    }, 503);
+  }
+
+  // 5. Prevent reuse of a UTR on another paper
+  const database = await readDatabase();
+
+  const duplicate = database.papers.some(
+    (item) =>
+      item.id !== paperId &&
+      String(item.payment?.utr || '').trim() === utr
+  );
+
+  if (duplicate) {
+    return json({
+      error: 'This transaction reference has already been submitted for another manuscript.'
+    }, 409);
+  }
+
+  // 6. Save the payment submission
+  const updated = await updatePaper(
+    paperId,
+    (current) => {
+      if (!current) {
+        throw new Error('Paper not found.');
+      }
+
+      current.payment = {
+        utr,
+        amount: config.amount,
+        submittedAt: new Date().toISOString(),
+        status: 'submitted',
+        note: cleanText(body.note, 200)
+      };
+
+      current.paymentStatus = 'submitted';
+      current.status = 'payment_submitted';
+
+      addTimeline(
+        current,
+        'payment_submitted',
+        'Author submitted a UPI transaction reference. Awaiting manual verification.',
+        'author'
+      );
+
+      return current;
+    },
+    `Record payment UTR ${paperId}`
+  );
+
+  if (!updated) {
+    return json({
+      error: 'Unable to find the manuscript record.'
+    }, 404);
+  }
+
+  // 7. Send author notification
+  const authorMail = await deliver(
+    updated,
+    'payment_submitted',
+    { utr }
+  );
+
+  // 8. Notify editorial office
+  let adminMailSent = false;
+
+  try {
+    await sendAdminNotice(
+      `UPI payment awaiting verification - ${paperId}`,
+      [
+        `Paper: ${updated.title}`,
+        `Paper ID: ${paperId}`,
+        `Author: ${updated.submitterName}`,
+        `Amount: INR ${config.amount}`,
+        `UTR: ${utr}`,
+        '',
+        'Please verify the transaction against the actual bank credit.',
+        'Do not publish until payment is confirmed.'
+      ].join('\n')
+    );
+
+    adminMailSent = true;
+  } catch (error) {
+    console.error(
+      '[payment] Admin notification failed:',
+      error.message
+    );
+  }
+
+  // 9. Return successful submission response
+  return json({
+    ok: true,
+    status: 'payment_submitted',
+    emailSent: authorMail.ok,
+    adminEmailSent: adminMailSent,
+    message: authorMail.ok
+      ? 'UTR submitted successfully. Your payment is awaiting manual verification.'
+      : 'UTR submitted successfully, but the confirmation email could not be sent. The editorial office can still review your payment.'
+  });
+}
+
 
 async function adminAction(body) {
   const paperId = cleanText(body.paperId, 80);
