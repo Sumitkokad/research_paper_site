@@ -445,6 +445,412 @@ async function handleClaim(body, context) {
 }
 
 
+
+async function adminAction(body) {
+  const paperId = cleanText(body.paperId, 80);
+  const action = cleanText(body.action, 40);
+
+  const existing = getPaper(await readDatabase(), paperId);
+
+  if (!existing) {
+    return json({ error: 'Paper not found.' }, 404);
+  }
+
+  // 1. Start editorial review
+  if (action === 'start_review') {
+    if (!['submitted', 'revision_submitted'].includes(existing.status)) {
+      return json({
+        error: 'This paper cannot be moved to review from its current state.'
+      }, 409);
+    }
+
+    const updated = await updatePaper(paperId, (paper) => {
+      paper.status = 'under_review';
+
+      addTimeline(
+        paper,
+        'under_review',
+        'Editorial screening / review started.',
+        'admin'
+      );
+
+      return paper;
+    }, `Start editorial review ${paperId}`);
+
+    return json({ ok: true, status: updated.status });
+  }
+
+  // 2. Accept manuscript
+  if (action === 'accept') {
+    if (!['submitted', 'under_review', 'revision_submitted'].includes(existing.status)) {
+      return json({
+        error: 'This paper cannot be accepted from its current state.'
+      }, 409);
+    }
+
+    const paymentUrl = await issuePaymentLink(paperId);
+
+    const updated = await updatePaper(paperId, (paper) => {
+      paper.status = 'accepted';
+      paper.paymentStatus = 'due';
+
+      addTimeline(
+        paper,
+        'accepted',
+        'Editor accepted the manuscript. Payment is now due.',
+        'admin'
+      );
+
+      return paper;
+    }, `Accept paper ${paperId}`);
+
+    const mail = await deliver(updated, 'accepted', { paymentUrl });
+
+    return json({ ok: true, emailSent: mail.ok });
+  }
+
+  // 3. Reject manuscript
+  if (action === 'reject') {
+    const reason = cleanText(body.reason, 1200);
+
+    const updated = await updatePaper(paperId, (paper) => {
+      paper.status = 'rejected';
+      paper.decisionReason = reason;
+
+      addTimeline(
+        paper,
+        'rejected',
+        reason || 'Editor declined the submission.',
+        'admin'
+      );
+
+      return paper;
+    }, `Reject paper ${paperId}`);
+
+    const mail = await deliver(updated, 'rejected', { reason });
+
+    return json({ ok: true, emailSent: mail.ok });
+  }
+
+  // 4. Request manuscript revision
+  if (action === 'request_revision') {
+    const comments = cleanText(body.comments, 3000);
+
+    if (!comments) {
+      return json({
+        error: 'Add revision comments before sending the request.'
+      }, 400);
+    }
+
+    const updated = await updatePaper(paperId, (paper) => {
+      paper.status = 'revision_requested';
+      paper.revisionComments = comments;
+
+      addTimeline(
+        paper,
+        'revision_requested',
+        'Editor requested a revised manuscript.',
+        'admin'
+      );
+
+      return paper;
+    }, `Request revision ${paperId}`);
+
+    const mail = await deliver(updated, 'revision', { comments });
+
+    return json({ ok: true, emailSent: mail.ok });
+  }
+
+  // 5. Confirm payment and publish
+  if (action === 'confirm_payment') {
+    if (
+      !existing.payment?.utr ||
+      !['payment_submitted', 'publishing', 'published'].includes(existing.status)
+    ) {
+      return json({
+        error: 'There is no submitted UTR awaiting confirmation.'
+      }, 409);
+    }
+
+    if (existing.status === 'payment_submitted') {
+      await updatePaper(paperId, (paper) => {
+        paper.payment.status = 'confirmed';
+        paper.payment.confirmedAt = new Date().toISOString();
+        paper.paymentStatus = 'confirmed';
+
+        addTimeline(
+          paper,
+          'payment_confirmed',
+          `Admin confirmed UTR ${paper.payment.utr}.`,
+          'admin'
+        );
+      }, `Confirm payment ${paperId}`);
+    }
+
+    try {
+      const published = await generateAndPublish(paperId);
+
+      return json({
+        ok: true,
+        status: published.status,
+        certificates: published.certificates?.length || 0,
+        emailSent: Boolean(published.publicationEmailSentAt)
+      });
+
+    } catch (error) {
+      await updatePaper(paperId, (paper) => {
+        paper.publishError = cleanText(error.message, 900);
+
+        addTimeline(
+          paper,
+          'publication_error',
+          'Payment is confirmed, but certificate generation needs admin attention.',
+          'system'
+        );
+      }, `Record publication error ${paperId}`);
+
+      return json({
+        error: `Payment confirmed. Publication generation needs attention: ${error.message}`,
+        paymentConfirmed: true
+      }, 500);
+    }
+  }
+
+  // 6. Reject payment
+  if (action === 'reject_payment') {
+    const reason = cleanText(body.reason, 1000);
+    const newUrl = await issuePaymentLink(paperId);
+
+    const updated = await updatePaper(paperId, (paper) => {
+      paper.status = 'accepted';
+      paper.paymentStatus = 'rejected';
+
+      paper.payment = {
+        ...(paper.payment || {}),
+        status: 'rejected',
+        rejectedAt: new Date().toISOString(),
+        rejectionReason: reason
+      };
+
+      addTimeline(
+        paper,
+        'payment_rejected',
+        reason || 'Payment could not be verified.',
+        'admin'
+      );
+
+      return paper;
+    }, `Reject payment ${paperId}`);
+
+    const mail = await deliver(updated, 'payment_rejected', { reason });
+
+    await deliver(updated, 'accepted', { paymentUrl: newUrl });
+
+    return json({ ok: true, emailSent: mail.ok });
+  }
+
+  // 7. Unpublish paper
+  if (action === 'unpublish') {
+    const reason = cleanText(body.reason, 1200);
+
+    if (!reason) {
+      return json({
+        error: 'A reason is required to unpublish a paper.'
+      }, 400);
+    }
+
+    const updated = await updatePaper(paperId, (paper) => {
+      paper.status = 'unpublished';
+      paper.unpublishedAt = new Date().toISOString();
+      paper.unpublishReason = reason;
+
+      addTimeline(
+        paper,
+        'unpublished',
+        `Paper unpublished: ${reason}`,
+        'admin'
+      );
+
+      return paper;
+    }, `Unpublish paper ${paperId}`);
+
+    await deliver(updated, 'unpublished', { reason });
+
+    publicCache.clear();
+
+    return json({ ok: true });
+  }
+
+  // 8. Edit paper metadata
+  if (action === 'edit_metadata') {
+    const updated = await updatePaper(paperId, (paper) => {
+      for (const field of [
+        'title',
+        'abstract',
+        'category',
+        'articleType',
+        'doi',
+        'issn',
+        'volume',
+        'issue',
+        'pageRange'
+      ]) {
+        if (Object.hasOwn(body, field)) {
+          paper[field] = cleanText(
+            body[field],
+            field === 'abstract' ? 5000 : 300
+          );
+        }
+      }
+
+      addTimeline(
+        paper,
+        'metadata_updated',
+        'Editor updated paper metadata.',
+        'admin'
+      );
+
+      return paper;
+    }, `Edit metadata ${paperId}`);
+
+    publicCache.clear();
+
+    return json({
+      ok: true,
+      paper: {
+        id: updated.id,
+        title: updated.title
+      }
+    });
+  }
+
+  // 9. Resend email
+  if (action === 'resend_email') {
+    let type = cleanText(body.type, 40);
+
+    if (type === 'last_failed') {
+      const lastFailure = [...(existing.mailLog || [])]
+        .reverse()
+        .find((entry) => entry.status === 'failed');
+
+      if (!lastFailure) {
+        return json({
+          error: 'There is no failed email recorded for this paper.'
+        }, 409);
+      }
+
+      type = lastFailure.type;
+    }
+
+    let current = existing;
+    const options = {};
+    const attachments = [];
+
+    if (type === 'accepted') {
+      options.paymentUrl = await issuePaymentLink(paperId);
+      current = await readDatabase().then((db) => getPaper(db, paperId));
+
+    } else if (type === 'claimed' || type === 'submitted') {
+      const token = makeRandomToken(32);
+
+      await updatePaper(paperId, (paper) => {
+        paper.trackTokenHash = sha256(token);
+        paper.trackTokenExpiresAt = new Date(
+          Date.now() + 365 * 24 * 60 * 60 * 1000
+        ).toISOString();
+      }, `Rotate author token ${paperId}`);
+
+      current = await readDatabase().then((db) => getPaper(db, paperId));
+
+      options.token = token;
+      options.trackingUrl = `${siteUrl()}/track`;
+
+    } else if (type === 'payment_received') {
+      const receipt = existing.payment?.receiptFilePath
+        ? await readBinary(existing.payment.receiptFilePath)
+        : null;
+
+      if (receipt) {
+        attachments.push({
+          filename: `${existing.payment.receiptId || 'payment-receipt'}.pdf`,
+          content: receipt,
+          contentType: 'application/pdf'
+        });
+      }
+
+    } else if (type === 'revision') {
+      options.comments =
+        existing.revisionComments ||
+        'Please review the editorial comments previously sent.';
+
+    } else if (type === 'rejected' || type === 'unpublished') {
+      options.reason =
+        existing.decisionReason ||
+        existing.unpublishReason ||
+        '';
+
+    } else if (type === 'payment_submitted') {
+      options.utr = existing.payment?.utr || '';
+
+    } else if (type === 'payment_rejected') {
+      options.reason = existing.payment?.rejectionReason || '';
+
+    } else if (type === 'publication') {
+      for (const cert of existing.certificates || []) {
+        if (cert.filePath) {
+          const bytes = await readBinary(cert.filePath);
+
+          if (bytes) {
+            attachments.push({
+              filename: `${cert.certificateId}.pdf`,
+              content: bytes,
+              contentType: 'application/pdf'
+            });
+          }
+        }
+      }
+
+      options.paperUrl = `${siteUrl()}/papers/${paperId}`;
+
+    } else if (
+      ![
+        'revision',
+        'rejected',
+        'unpublished',
+        'payment_submitted',
+        'payment_received',
+        'payment_rejected'
+      ].includes(type)
+    ) {
+      return json({ error: 'Unsupported email type.' }, 400);
+    }
+
+    const sent = await deliver(
+      current,
+      type === 'submitted' ? 'claimed' : type,
+      options,
+      attachments
+    );
+
+    if (sent.ok && type === 'publication') {
+      await updatePaper(
+        paperId,
+        (paper) => {
+          paper.publicationEmailSentAt = new Date().toISOString();
+        },
+        'Record resent publication email'
+      );
+    }
+
+    return json({
+      ok: sent.ok,
+      error: sent.error || null
+    });
+  }
+
+  return json({ error: 'Unknown admin action.' }, 400);
+}
+
 async function apiHandler(request, context) {
   const url = new URL(request.url);
   const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map((part) => decodeURIComponent(part));
