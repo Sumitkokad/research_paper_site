@@ -24,12 +24,48 @@ export default function Pay() {
     if (!token) { setError('A valid payment token from the acceptance email is required.'); setLoading(false); return; }
     api(`/pay/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`).then(async (data) => { setPayment(data); setQr(await QRCode.toDataURL(data.uri, { width: 320, margin: 2, errorCorrectionLevel: 'M' })); }).catch((err) => setError(err.message)).finally(() => setLoading(false));
   }, [id, token]);
-  async function submit(event) {
-    event.preventDefault(); setError(''); setSuccess(''); setBusy(true);
-    try { const result = await post('/payment', { paperId: id, token, utr: utr.trim(), note }); setSuccess(result.message); setPayment((current) => ({ ...current, submitted: true })); }
-    catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+  
+async function handlePaymentSubmit(event) {
+  event.preventDefault();
+
+  setError('');
+  setSuccess('');
+
+  if (!utr || !/^\d{12}$/.test(utr.trim())) {
+    setError('Please enter a valid 12-digit UTR / transaction reference.');
+    return;
   }
+
+  setBusy(true);
+
+  try {
+    const result = await post('/payment', {
+      paperId: id,
+      token,
+      utr: utr.trim(),
+      note: note.trim()
+    });
+
+    setSuccess(
+      result.message ||
+      'Payment reference submitted successfully. Awaiting editorial verification.'
+    );
+
+    setPayment((current) => ({
+      ...current,
+      submitted: true
+    }));
+
+    setUtr('');
+    setNote('');
+
+  } catch (err) {
+    setError(err.message || 'Unable to submit payment reference.');
+  } finally {
+    setBusy(false);
+  }
+}
+
   async function copyVpa() { try { await navigator.clipboard.writeText(payment.vpa); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { setError('Could not copy the UPI ID.'); } }
   return <>
     <Meta title="Publication payment" description="Submit UPI payment details for an accepted manuscript."/>
