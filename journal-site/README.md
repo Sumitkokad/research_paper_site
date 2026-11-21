@@ -1,6 +1,6 @@
-# IJSCI Journal Platform — React + Netlify
+# ijrise Journal Platform — React + Netlify
 
-A React 18 + Vite publishing website for the **International Journal of Sciences and Innovation Engineering (IJSCI)**. The interface is built with React Router; server-only workflows run as Netlify Functions. Paper records and PDF files are stored in the private GitHub repository configured by the journal.
+A React 18 + Vite publishing website for the **International Journal of Sciences and Innovation Engineering (ijrise)**. The interface is built with React Router; server-only workflows run as Netlify Functions. Paper records and PDF files are stored in the private GitHub repository configured by the journal.
 
 This project is a journal workflow platform, not a DOI registration agency, indexing service, payment gateway, peer-review service or legal compliance certification. Publish only verified journal details and operate the editorial workflow in accordance with your actual policies.
 
@@ -141,7 +141,7 @@ Use a unique password; do not reuse an email password. Rotate both the admin pas
 | Variable | Purpose |
 | --- | --- |
 | `JOURNAL_NAME` | Full journal name shown on the site, emails and certificates |
-| `JOURNAL_SHORT_NAME` | Short journal brand, default `IJSCI` |
+| `JOURNAL_SHORT_NAME` | Short journal brand, default `ijrise` |
 | `JOURNAL_SITE_URL` | Canonical HTTPS site URL, e.g. `https://journal.example.org` |
 | `JOURNAL_CONTACT_EMAIL` | Public contact address |
 | `JOURNAL_ISSN` | Leave blank until the journal's ISSN is verified |
@@ -161,11 +161,11 @@ Vite-only public variables in `.env.example` (`VITE_SITE_URL`, `VITE_CONTACT_EMA
 | `SMTP_SECURE` | `true` for TLS on port 465; `false` for STARTTLS on 587 |
 | `SMTP_USER` | SMTP authentication account; may be your existing Gmail login |
 | `SMTP_PASSWORD` | SMTP app password / provider SMTP credential |
-| `MAIL_FROM_NAME` | Display label, e.g. `IJSCI Editorial Office` |
+| `MAIL_FROM_NAME` | Display label, e.g. `ijrise Editorial Office` |
 | `MAIL_FROM_ADDRESS` | **Required verified journal-domain sender address or alias** |
 | `EDITORIAL_INBOX` | Monitored journal mailbox used for replies and admin notices |
 
-The project intentionally refuses to send an email when `MAIL_FROM_ADDRESS` is missing, rather than silently using `SMTP_USER` and exposing the personal Gmail login as the sender. A display name alone does not hide an email address. Configure a custom-domain mailbox (best option), or verify a custom-domain send-as alias with your SMTP provider and use that address in `MAIL_FROM_ADDRESS`. Some providers may rewrite sender details or add an authenticated-account header; test message headers with a second email account before launch. If your Gmail SMTP setup cannot send from the verified alias, use a domain mailbox/provider instead. Do not assume `sumitkokad@gmail.com` will be hidden merely because the display label says “IJSCI Editorial Office”.
+The project intentionally refuses to send an email when `MAIL_FROM_ADDRESS` is missing, rather than silently using `SMTP_USER` and exposing the personal Gmail login as the sender. A display name alone does not hide an email address. Configure a custom-domain mailbox (best option), or verify a custom-domain send-as alias with your SMTP provider and use that address in `MAIL_FROM_ADDRESS`. Some providers may rewrite sender details or add an authenticated-account header; test message headers with a second email account before launch. If your Gmail SMTP setup cannot send from the verified alias, use a domain mailbox/provider instead. Do not assume `sumitkokad@gmail.com` will be hidden merely because the display label says “ijrise Editorial Office”.
 
 ### UPI payment settings
 
@@ -223,7 +223,7 @@ The logo and signature are optional. Use only a logo and signature that the jour
 
 ## 6. DOI, ISSN and indexing — do not fabricate identifiers
 
-- The project generates an internal paper reference (`IJSCI-...`) and certificate ID. Neither is a DOI.
+- The project generates an internal paper reference (`ijrise-...`) and certificate ID. Neither is a DOI.
 - A DOI field is blank until an editor enters a genuine DOI that has been registered through an authorized registration agency. For Crossref DOI assignment, the journal must obtain the relevant membership/prefix and register the DOI metadata. This project does **not** mint or register DOIs.
 - Keep `JOURNAL_ISSN` blank until an authentic ISSN has been assigned and verified. The example certificate image is a visual reference, not independent proof that a number is currently valid or belongs to the journal.
 - Google Scholar citation meta tags and ScholarlyArticle JSON-LD improve machine-readable metadata, but do not guarantee indexing. Do not add indexing logos, third-party badges, editorial-board names, review claims or accreditation claims unless they are real and documented.

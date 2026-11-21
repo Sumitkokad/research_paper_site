@@ -1,6 +1,6 @@
 export const journal = {
   name: 'International Journal of Sciences and Innovation Engineering',
-  shortName: 'IJSCI',
+  shortName: 'ijrise',
   tagline: 'A digital home for research and innovation',
   description: 'An independent journal platform for scholarly work across science, technology and engineering.',
   siteUrl: import.meta.env.VITE_SITE_URL || window.location.origin,

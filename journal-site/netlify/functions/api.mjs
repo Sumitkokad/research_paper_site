@@ -30,7 +30,7 @@ async function getCachedPublicPaper(paperId = null) {
 const publicCacheHeaders = { 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600' };
 const publicConfig = () => ({
   journalName: process.env.JOURNAL_NAME || 'International Journal of Sciences and Innovation Engineering',
-  shortName: process.env.JOURNAL_SHORT_NAME || 'IJSCI',
+  shortName: process.env.JOURNAL_SHORT_NAME || 'ijrise',
   siteUrl: siteUrl(),
   contactEmail: process.env.JOURNAL_CONTACT_EMAIL || process.env.EDITORIAL_INBOX || '',
   issn: process.env.JOURNAL_ISSN || '',
@@ -228,7 +228,7 @@ async function generateAndPublish(paperId) {
   if (!paper.payment?.receiptFilePath) {
     paper = await updatePaper(paperId, (current) => {
       current.payment ||= {};
-      current.payment.receiptId ||= `IJSCI-RCPT-${new Date().getFullYear()}-${idToken()}`;
+      current.payment.receiptId ||= `ijrise-RCPT-${new Date().getFullYear()}-${idToken()}`;
       return current;
     }, 'Reserve payment receipt reference');
     const receiptId = paper.payment.receiptId;
@@ -283,7 +283,7 @@ async function handleSubmit(request, context) {
   const abstract = cleanText(form.get('abstract'), 5000);
   if (title.length < 8 || abstract.length < 40) return json({ error: 'Enter a descriptive title and an abstract of at least 40 characters.' }, 400);
   const year = new Date().getUTCFullYear();
-  const paperId = `IJSCI-${year}-${idToken()}`;
+  const paperId = `ijrise-${year}-${idToken()}`;
   const filePath = `submissions/${paperId}/v1.pdf`;
   const trackToken = makeRandomToken(32);
   const trackDays = Math.min(730, Math.max(1, Number(process.env.TRACK_TOKEN_TTL_DAYS || 365)));
@@ -1081,7 +1081,7 @@ async function apiHandler(request, context) {
     if (method === 'GET' && parts[1] === 'backup') {
       const db = await readDatabase();
       const content = Buffer.from(JSON.stringify(db, null, 2));
-      return new Response(content, { headers: { 'Content-Type': 'application/json', 'Content-Disposition': 'attachment; filename="ijsci-db-backup.json"', 'Cache-Control': 'no-store' } });
+      return new Response(content, { headers: { 'Content-Type': 'application/json', 'Content-Disposition': 'attachment; filename="ijrise-db-backup.json"', 'Cache-Control': 'no-store' } });
     }
   }
 

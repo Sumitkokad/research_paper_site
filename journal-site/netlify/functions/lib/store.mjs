@@ -22,7 +22,7 @@ function headers(accept = 'application/vnd.github+json') {
     Accept: accept,
     'X-GitHub-Api-Version': '2022-11-28',
     'Content-Type': 'application/json',
-    'User-Agent': 'IJSCI-Journal-Platform'
+    'User-Agent': 'ijrise-Journal-Platform'
   };
 }
 

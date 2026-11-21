@@ -73,12 +73,12 @@ async function testSMTP() {
 
     const result = await transporter.sendMail({
       from: {
-        name: MAIL_FROM_NAME || 'IJSCI Editorial Office',
+        name: MAIL_FROM_NAME || 'ijrise Editorial Office',
         address: MAIL_FROM_ADDRESS
       },
       to: SMTP_USER,
-      subject: 'IJSCI SMTP Test Email',
-      text: 'Your IJSCI journal SMTP configuration is working successfully.'
+      subject: 'ijrise SMTP Test Email',
+      text: 'Your ijrise journal SMTP configuration is working successfully.'
     });
 
     console.log('SUCCESS: Test email accepted by Gmail.');

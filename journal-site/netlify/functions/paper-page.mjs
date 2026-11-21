@@ -31,7 +31,7 @@ export default async (request) => {
     const pdfUrl = paper ? `${site}/api/download/${encodeURIComponent(paper.id)}` : '';
     const authors = (paper?.authors || []).map((author) => author.name).filter(Boolean);
     const date = paper?.publishedAt ? new Date(paper.publishedAt).toISOString().slice(0, 10) : '';
-    const title = paper ? `${paper.title} | ${process.env.JOURNAL_SHORT_NAME || 'IJSCI'}` : `${process.env.JOURNAL_SHORT_NAME || 'IJSCI'} — Published papers`;
+    const title = paper ? `${paper.title} | ${process.env.JOURNAL_SHORT_NAME || 'ijrise'}` : `${process.env.JOURNAL_SHORT_NAME || 'ijrise'} — Published papers`;
     const tags = paper ? [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(paper.abstract || paper.title)}">`,
@@ -49,7 +49,7 @@ export default async (request) => {
       ...(paper.issue ? [`<meta name="citation_issue" content="${esc(paper.issue)}" data-paper-meta="true">`] : []),
       ...(paper.doi ? [`<meta name="citation_doi" content="${esc(paper.doi)}" data-paper-meta="true">`] : []),
       `<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'ScholarlyArticle', headline: paper.title, abstract: paper.abstract, datePublished: date || undefined, identifier: paper.doi || paper.id, author: (paper.authors || []).map((author) => ({ '@type': 'Person', name: author.name, affiliation: author.affiliation ? { '@type': 'Organization', name: author.affiliation } : undefined })), isPartOf: { '@type': 'Periodical', name: process.env.JOURNAL_NAME || 'International Journal of Sciences and Innovation Engineering' }, url: paperUrl, encoding: pdfUrl }).replace(/</g, '\\u003c')}</script>`
-    ] : [`<title>${esc(title)}</title>`, `<meta name="description" content="Published research archive of ${esc(process.env.JOURNAL_NAME || 'IJSCI')}">`];
+    ] : [`<title>${esc(title)}</title>`, `<meta name="description" content="Published research archive of ${esc(process.env.JOURNAL_NAME || 'ijrise')}">`];
     const htmlMeta = tags.join('\n');
     const htmlPath = path.resolve(process.cwd(), 'dist/index.html');
     let html = await fs.readFile(htmlPath, 'utf8');
