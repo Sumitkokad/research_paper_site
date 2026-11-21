@@ -124,7 +124,7 @@ export async function generateCertificatePdf({ paper, certificate, verifyUrl }) 
     .map((author) => author.name)
     .filter(Boolean)
     .join(', ');
-  const journalName = process.env.JOURNAL_NAME || 'International Journal of Sciences and Innovation Engineering';
+  const journalName = process.env.JOURNAL_NAME || 'International Journal of Research and Innovation in Science and Engineering';
   const shortName = process.env.JOURNAL_SHORT_NAME || 'ijrise';
   const issn = process.env.JOURNAL_ISSN || '';
   [paper.title, authorName, coauthors, paper.id, certificate.certificateId, journalName, shortName, issn]
@@ -272,6 +272,6 @@ export async function generatePaymentReceiptPdf({ paper, payment }) {
   }
   page.drawText('This receipt confirms that the journal marked the submitted UPI payment as received.', { x: 54, y: 104, size: 8.5, font: fonts.regular, color: C.muted });
   page.drawText('Keep this receipt with your publication records.', { x: 54, y: 88, size: 8.5, font: fonts.regular, color: C.muted });
-  page.drawText(process.env.JOURNAL_NAME || 'International Journal of Sciences and Innovation Engineering', { x: 54, y: 56, size: 8, font: fonts.bold, color: C.navy });
+  page.drawText(process.env.JOURNAL_NAME || 'International Journal of Research and Innovation in Science and Engineering', { x: 54, y: 56, size: 8, font: fonts.bold, color: C.navy });
   return Buffer.from(await pdf.save());
 }

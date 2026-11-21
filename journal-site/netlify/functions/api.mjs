@@ -29,7 +29,7 @@ async function getCachedPublicPaper(paperId = null) {
 
 const publicCacheHeaders = { 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600' };
 const publicConfig = () => ({
-  journalName: process.env.JOURNAL_NAME || 'International Journal of Sciences and Innovation Engineering',
+  journalName: process.env.JOURNAL_NAME || 'International Journal of Research and Innovation in Science and Engineering',
   shortName: process.env.JOURNAL_SHORT_NAME || 'ijrise',
   siteUrl: siteUrl(),
   contactEmail: process.env.JOURNAL_CONTACT_EMAIL || process.env.EDITORIAL_INBOX || '',

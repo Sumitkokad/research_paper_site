@@ -1,6 +1,6 @@
 # ijrise Journal Platform — React + Netlify
 
-A React 18 + Vite publishing website for the **International Journal of Sciences and Innovation Engineering (ijrise)**. The interface is built with React Router; server-only workflows run as Netlify Functions. Paper records and PDF files are stored in the private GitHub repository configured by the journal.
+A React 18 + Vite publishing website for the **International Journal of Research and Innovation in Science and Engineering (ijrise)**. The interface is built with React Router; server-only workflows run as Netlify Functions. Paper records and PDF files are stored in the private GitHub repository configured by the journal.
 
 This project is a journal workflow platform, not a DOI registration agency, indexing service, payment gateway, peer-review service or legal compliance certification. Publish only verified journal details and operate the editorial workflow in accordance with your actual policies.
 

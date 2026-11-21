@@ -29,7 +29,7 @@ export default function Home() {
           <div className="floating-note note-bottom"><span className="note-icon note-olive"><BookOpen size={16}/></span><span><strong>Research archive</strong><small>Published articles</small></span></div>
         </div>
       </div>
-      <div className="container hero-bottom"><span>INTERNATIONAL JOURNAL OF SCIENCES AND INNOVATION ENGINEERING</span><span className="hero-bottom-line"/><span>{journal.issn ? `ISSN ${journal.issn}` : 'ISSN displayed when confirmed'}</span></div>
+      <div className="container hero-bottom"><span>International Journal of Research and Innovation in Science and Engineering</span><span className="hero-bottom-line"/><span>{journal.issn ? `ISSN ${journal.issn}` : 'ISSN displayed when confirmed'}</span></div>
     </section>
 
     <section className="section section-white"><div className="container">
