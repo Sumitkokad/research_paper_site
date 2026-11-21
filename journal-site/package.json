@@ -1,0 +1,29 @@
+{
+  "name": "ijsci-journal-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "React journal publishing platform with GitHub repository storage and Netlify serverless functions.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test",
+    "fonts:setup": "node scripts/download-fonts.mjs",
+    "migrate:json": "node scripts/migrate-json.mjs"
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "lucide-react": "^0.468.0",
+    "nodemailer": "^6.10.0",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
