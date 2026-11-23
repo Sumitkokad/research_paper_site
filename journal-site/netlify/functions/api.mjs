@@ -122,7 +122,7 @@ const publicCacheHeaders = {
 const publicConfig = () => ({
   journalName:
     process.env.JOURNAL_NAME ||
-    'International Journal of Research and Innovation in Science and Engineering',
+    'International Journal of Research and Open Science',
   shortName: process.env.JOURNAL_SHORT_NAME || 'ijros',
   siteUrl: siteUrl(),
   contactEmail:

@@ -565,7 +565,7 @@ export async function generateCertificatePdf({
 
   const journalName =
     process.env.JOURNAL_NAME ||
-    'International Journal of Research and Innovation in Science and Engineering';
+    'International Journal of Research and Open Science';
 
   const shortName =
     process.env.JOURNAL_SHORT_NAME || 'ijros';
@@ -1210,7 +1210,7 @@ export async function generatePaymentReceiptPdf({
 
   page.drawText(
     process.env.JOURNAL_NAME ||
-    'International Journal of Research and Innovation in Science and Engineering',
+    'International Journal of Research and Open Science',
     {
       x: 54,
       y: 56,

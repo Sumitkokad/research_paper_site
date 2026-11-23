@@ -1,5 +1,5 @@
 export const journal = {
-  name: 'International Journal of Research and Innovation in Science and Engineering',
+  name: 'International Journal of Research and Open Science',
   shortName: 'ijros',
   tagline: 'A digital home for research and innovation',
   description: 'An independent journal platform for scholarly work across science, technology and engineering.',
