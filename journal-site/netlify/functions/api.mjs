@@ -1987,6 +1987,7 @@ async function adminAction(body) {
   }
 
   // 5. Confirm payment only. Does not publish.
+    // 5. Confirm payment and publish to Figshare in one click.
   if (action === 'confirm_payment') {
     if (
       existing.paymentStatus === 'confirmed' &&
@@ -2036,13 +2037,56 @@ async function adminAction(body) {
       `Confirm payment ${paperId}`
     );
 
-    return json({
-      ok: true,
-      status: updated.status,
-      paymentStatus: updated.paymentStatus,
-      message:
-        'Payment confirmed. Click Publish when you are ready to publish this paper.'
-    });
+    const figshareConfigured =
+      Boolean(process.env.FIGSHARE_TOKEN) &&
+      Number(process.env.FIGSHARE_LICENSE_ID) > 0;
+
+    if (!figshareConfigured) {
+      return json({
+        ok: true,
+        status: updated.status,
+        paymentStatus: updated.paymentStatus,
+        message:
+          'Payment confirmed. Figshare is not configured — set FIGSHARE_TOKEN and FIGSHARE_LICENSE_ID to publish automatically.'
+      });
+    }
+
+    try {
+      const result = await publishPaperToFigshare(paperId);
+
+      return json({
+        ok: true,
+        status: result.paper.status,
+        paymentStatus: result.paper.paymentStatus,
+        doi: result.paper.figshare?.doi || '',
+        figshareUrl: result.paper.figshare?.recordUrl || '',
+        certificates: (result.paper.certificates || []).map(
+          (certificate) => ({
+            certificateId: certificate.certificateId,
+            authorName: certificate.authorName,
+            url: certificate.filePath
+              ? `/api/certificate/${encodeURIComponent(certificate.certificateId)}`
+              : ''
+          })
+        ),
+        emailEnabled: emailEnabled(),
+        message:
+          'Payment confirmed and paper published. Receipt and certificates were emailed to the author.'
+      });
+    } catch (error) {
+      console.error('[confirm-publish]', paperId, error);
+
+      return json(
+        {
+          ok: false,
+          status: 'ready_to_publish',
+          paymentStatus: 'confirmed',
+          error:
+            `Payment confirmed. Publication failed: ${error.message}. Use the Publish button to retry.`
+        },
+        502
+      );
+    }
   }
 
   // 6. Reject payment.

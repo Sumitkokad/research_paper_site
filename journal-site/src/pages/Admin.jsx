@@ -40,11 +40,48 @@ export default function Admin() {
     return matchesStatus && haystack.includes(query.toLowerCase());
   }), [data, query, statusFilter]);
   function draft(id, field, value) { setDrafts((current) => ({ ...current, [id]: { ...(current[id] || {}), [field]: value } })); }
-  async function adminAction(paper, actionName, extra = {}) {
-    const key = `${paper.id}:${actionName}`; setBusyAction(key); setError(''); setNotice('');
-    try { const result = await post('/admin/action', { paperId: paper.id, action: actionName, ...extra }); setNotice(result.emailSent === false ? 'Action saved, but email delivery failed. Review the mail log and SMTP settings.' : result.error || (actionName === 'confirm_payment' ? `Published. ${result.certificates || 0} author certificate(s) generated.` : 'Changes saved.')); await refresh(); }
-    catch (err) { setError(err.message); if (/Payment confirmed/.test(err.message)) await refresh(); }
-    finally { setBusyAction(''); }
+    async function adminAction(paper, actionName, extra = {}) {
+    const key = `${paper.id}:${actionName}`;
+    setBusyAction(key);
+    setError('');
+    setNotice('');
+    try {
+      const result = await post('/admin/action', {
+        paperId: paper.id,
+        action: actionName,
+        ...extra
+      });
+
+      const certCount = Array.isArray(result.certificates)
+        ? result.certificates.length
+        : 0;
+
+      let message = 'Changes saved.';
+
+      if (result.doi) {
+        message = `Published. DOI: ${result.doi}. ${certCount} certificate(s) emailed.`;
+      } else if (result.message) {
+        message = result.message;
+      } else if (actionName === 'confirm_payment') {
+        message = `Payment confirmed. ${certCount} certificate(s) generated.`;
+      }
+
+      setNotice(
+        result.emailSent === false
+          ? `${message} (Email delivery failed — check the mail log.)`
+          : message
+      );
+
+      await refresh();
+    } catch (err) {
+      const msg = err.message || 'Action failed.';
+      if (/Payment confirmed/i.test(msg)) {
+        await refresh();
+      }
+      setError(msg);
+    } finally {
+      setBusyAction('');
+    }
   }
   function getDraft(paper, key, fallback = '') { return drafts[paper.id]?.[key] ?? fallback; }
 
@@ -68,7 +105,8 @@ export default function Admin() {
             {paper.emailFailure && <Notice type="warning">Latest email failure: {paper.emailFailure}</Notice>}
             <div className="admin-actions-grid">
               {['submitted', 'under_review', 'revision_submitted'].includes(paper.status) && <><div className="admin-action-block"><strong>Editorial decision</strong>{paper.status !== 'under_review' && <button className="button button-light button-small" onClick={() => adminAction(paper, 'start_review')}>Mark under review</button>}<button className="button button-primary button-small" onClick={() => adminAction(paper, 'accept')}>Accept &amp; send payment link</button><textarea value={getDraft(paper, 'comments')} onChange={(e) => draft(paper.id, 'comments', e.target.value)} placeholder="Revision comments for author"/><button className="button button-light button-small" onClick={() => adminAction(paper, 'request_revision', { comments: getDraft(paper, 'comments') })}>Request revision</button><textarea value={getDraft(paper, 'reason')} onChange={(e) => draft(paper.id, 'reason', e.target.value)} placeholder="Optional decision note"/><button className="button button-danger button-small" onClick={() => adminAction(paper, 'reject', { reason: getDraft(paper, 'reason') })}>Reject submission</button></div></>}
-              {paper.status === 'publishing' && <div className="admin-action-block"><strong>Publication needs retry</strong><p>Payment was confirmed, but certificate creation did not finish.</p><button className="button button-primary button-small" onClick={() => adminAction(paper, 'confirm_payment')}>Retry certificate generation</button></div>}
+              {paper.status === 'publishing' && <div className="admin-action-block"><strong>Publication needs retry</strong><p>Figshare draft exists, but publication did not finish.</p><button className="button button-primary button-small" disabled={busyAction === `${paper.id}:publish`} onClick={() => adminAction(paper, 'publish')}>{busyAction === `${paper.id}:publish` ? 'Publishing…' : 'Retry publication'}</button></div>}
+{paper.status === 'ready_to_publish' && <div className="admin-action-block"><strong>Ready to publish</strong><p>Payment confirmed. Previous attempt did not complete. Click below to publish to Figshare and email the author.</p><button className="button button-primary button-small" disabled={busyAction === `${paper.id}:publish`} onClick={() => adminAction(paper, 'publish')}>{busyAction === `${paper.id}:publish` ? 'Publishing…' : 'Publish to Figshare'}</button></div>}
               {paper.status === 'published' && <div className="admin-action-block"><strong>Published record</strong><p>{paper.certificates?.length || 0} author certificate(s) · {paper.volume} {paper.issue}</p><button className="button button-danger button-small" onClick={() => adminAction(paper, 'unpublish', { reason: getDraft(paper, 'reason') || 'Withdrawn by editorial office.' })}>Unpublish with reason</button><textarea value={getDraft(paper, 'reason')} onChange={(e) => draft(paper.id, 'reason', e.target.value)} placeholder="Required reason for withdrawal"/></div>}
               <div className="admin-action-block"><strong>Metadata</strong><label className="mini-field">Title<input value={getDraft(paper, 'title', paper.title || '')} onChange={(e) => draft(paper.id, 'title', e.target.value)}/></label><label className="mini-field">Abstract<textarea value={getDraft(paper, 'abstract', paper.abstract || '')} onChange={(e) => draft(paper.id, 'abstract', e.target.value)} /></label><label className="mini-field">Subject<input value={getDraft(paper, 'category', paper.category || '')} onChange={(e) => draft(paper.id, 'category', e.target.value)}/></label><label className="mini-field">Article type<input value={getDraft(paper, 'articleType', paper.articleType || '')} onChange={(e) => draft(paper.id, 'articleType', e.target.value)}/></label><label className="mini-field">ISSN<input value={getDraft(paper, 'issn', paper.issn || '')} onChange={(e) => draft(paper.id, 'issn', e.target.value)} placeholder="Only enter a verified ISSN"/></label><label className="mini-field">DOI<input value={getDraft(paper, 'doi', paper.doi || '')} onChange={(e) => draft(paper.id, 'doi', e.target.value)} placeholder="Only enter a registered DOI"/></label><div className="field-two"><label className="mini-field">Volume<input value={getDraft(paper, 'volume', paper.volume || '')} onChange={(e) => draft(paper.id, 'volume', e.target.value)}/></label><label className="mini-field">Issue<input value={getDraft(paper, 'issue', paper.issue || '')} onChange={(e) => draft(paper.id, 'issue', e.target.value)}/></label></div><button className="button button-light button-small" onClick={() => adminAction(paper, 'edit_metadata', { title: getDraft(paper, 'title', paper.title || ''), abstract: getDraft(paper, 'abstract', paper.abstract || ''), category: getDraft(paper, 'category', paper.category || ''), articleType: getDraft(paper, 'articleType', paper.articleType || ''), issn: getDraft(paper, 'issn', paper.issn || ''), doi: getDraft(paper, 'doi', paper.doi || ''), volume: getDraft(paper, 'volume', paper.volume || ''), issue: getDraft(paper, 'issue', paper.issue || '') })}><Save size={14}/> Save metadata</button></div>
               <div className="admin-action-block"><strong>Email delivery</strong><div className="mail-buttons"><button onClick={() => adminAction(paper, 'resend_email', { type: paper.status === 'published' ? 'publication' : paper.status === 'accepted' ? 'accepted' : 'claimed' })} className="button button-light button-small"><Mail size={14}/> Resend status email</button>{(paper.mailLog || []).some((log) => log.status === 'failed') && <button onClick={() => adminAction(paper, 'resend_email', { type: 'last_failed' })} className="button button-quiet button-small"><RefreshCw size={13}/> Retry last failed</button>}</div>{(paper.mailLog || []).slice(-4).reverse().map((log, index) => <small className={`mail-log ${log.status}`} key={`${log.at}-${index}`}>{log.type}: {log.status} · {formatDate(log.at)}</small>)}</div>
