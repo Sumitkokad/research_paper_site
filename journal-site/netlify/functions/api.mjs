@@ -957,7 +957,7 @@ async function handleSubmit(request, context) {
     paper,
     'submitted',
     'submissionEmailSentAt',
-    { trackingUrl: link }
+    { trackingUrl: link, token: trackToken }
   );
 
   return json(
@@ -1215,7 +1215,7 @@ async function handleClaim(body, context) {
       'claimed',
       {
         token,
-        trackingUrl: `${siteUrl()}/track`
+        trackingUrl: `${siteUrl()}/track?paperId=${encodeURIComponent(paperId)}&token=${encodeURIComponent(token)}`
       }
     );
 
@@ -2235,7 +2235,7 @@ async function adminAction(body) {
       );
 
       options.token = token;
-      options.trackingUrl = `${siteUrl()}/track`;
+      options.trackingUrl = `${siteUrl()}/track?paperId=${encodeURIComponent(paperId)}&token=${encodeURIComponent(token)}`;
     } else if (type === 'payment_received') {
       const receipt = existing.payment?.receiptFilePath
         ? await readBinary(existing.payment.receiptFilePath)

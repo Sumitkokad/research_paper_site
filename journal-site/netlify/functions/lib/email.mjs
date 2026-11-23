@@ -164,7 +164,7 @@ function makeEmail(type, paper = {}, options = {}) {
   let textBody = '';
 
   switch (type) {
-    case 'submitted':
+        case 'submitted':
       subject = `Manuscript received – ${paperId}`;
       body = `
         ${greeting}
@@ -172,6 +172,11 @@ function makeEmail(type, paper = {}, options = {}) {
         ${manuscript}
         <p>Your submission is now in the editorial review process.
            You will receive another email when the editorial team updates its status.</p>
+        <p><strong>Paper ID:</strong> ${html(paperId)}</p>
+        <p><strong>Private tracking token:</strong><br>
+           <code style="display:inline-block;background:#f4f6f8;padding:6px 10px;border-radius:4px;font-family:monospace;font-size:13px;word-break:break-all;">${html(options.token || '')}</code>
+        </p>
+        <p>Save both values — the link below is the fastest way back to your submission.</p>
         ${button(trackingUrl, 'Track Your Submission')}
         <p>Thank you for submitting your work.</p>
       `;
@@ -180,6 +185,7 @@ function makeEmail(type, paper = {}, options = {}) {
 Your manuscript has been received.
 Title: ${title}
 Reference ID: ${paperId}
+Private tracking token: ${options.token || ''}
 Track your submission: ${trackingUrl || 'Use the journal tracking page.'}`;
       break;
 
@@ -384,7 +390,11 @@ ${reason ? `${reason}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
         ${greeting}
         <p>A request was made to access your manuscript tracking information.</p>
         ${manuscript}
-        <p>Use the secure link below to view your submission status.</p>
+        <p><strong>Paper ID:</strong> ${html(paperId)}</p>
+        <p><strong>Private tracking token:</strong><br>
+           <code style="display:inline-block;background:#f4f6f8;padding:6px 10px;border-radius:4px;font-family:monospace;font-size:13px;word-break:break-all;">${html(options.token || '')}</code>
+        </p>
+        <p>Use the secure link below, or enter these details manually on the Track page.</p>
         ${button(trackingUrl, 'Access Submission Tracking')}
         <p>If you did not request this email, you can ignore it.</p>
       `;
@@ -393,6 +403,7 @@ ${reason ? `${reason}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
 A request was made to access your manuscript tracking information.
 Title: ${title}
 Reference ID: ${paperId}
+Private tracking token: ${options.token || ''}
 ${trackingUrl ? `Secure tracking link: ${trackingUrl}\n` : ''}
 If you did not request this email, ignore this message.`;
       break;
