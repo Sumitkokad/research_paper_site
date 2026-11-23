@@ -123,7 +123,7 @@ const publicConfig = () => ({
   journalName:
     process.env.JOURNAL_NAME ||
     'International Journal of Research and Innovation in Science and Engineering',
-  shortName: process.env.JOURNAL_SHORT_NAME || 'ijrise',
+  shortName: process.env.JOURNAL_SHORT_NAME || 'ijros',
   siteUrl: siteUrl(),
   contactEmail:
     process.env.JOURNAL_CONTACT_EMAIL ||
@@ -675,7 +675,7 @@ async function generateAndPublish(paperId) {
         current.payment ||= {};
 
         current.payment.receiptId ||=
-          `ijrise-RCPT-${new Date().getFullYear()}-${idToken()}`;
+          `ijros-RCPT-${new Date().getFullYear()}-${idToken()}`;
 
         return current;
       },
@@ -864,7 +864,7 @@ async function handleSubmit(request, context) {
   }
 
   const year = new Date().getUTCFullYear();
-  const paperId = `ijrise-${year}-${idToken()}`;
+  const paperId = `ijros-${year}-${idToken()}`;
   const filePath = `submissions/${paperId}/v1.pdf`;
 
   const trackToken = makeRandomToken(32);
@@ -2726,7 +2726,7 @@ async function apiHandler(request, context) {
         headers: {
           'Content-Type': 'application/json',
           'Content-Disposition':
-            'attachment; filename="ijrise-db-backup.json"',
+            'attachment; filename="ijros-db-backup.json"',
           'Cache-Control': 'no-store'
         }
       });

@@ -39,7 +39,7 @@ export function verifySignedToken(token, secret, now = Date.now()) {
   }
 }
 
-export function ensureCertificates(paper, makeId = () => `ijrise-CERT-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`) {
+export function ensureCertificates(paper, makeId = () => `ijros-CERT-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`) {
   const certificates = Array.isArray(paper.certificates) ? [...paper.certificates] : [];
   const authors = Array.isArray(paper.authors) ? paper.authors : [];
   const byAuthor = new Map(certificates.map((cert) => [cert.authorIndex, cert]));

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { timingSafeEqualText, verifySignedToken } from './core.mjs';
 
-const SESSION_COOKIE = 'ijrise_admin';
+const SESSION_COOKIE = 'ijros_admin';
 
 export function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {

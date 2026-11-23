@@ -568,7 +568,7 @@ export async function generateCertificatePdf({
     'International Journal of Research and Innovation in Science and Engineering';
 
   const shortName =
-    process.env.JOURNAL_SHORT_NAME || 'ijrise';
+    process.env.JOURNAL_SHORT_NAME || 'ijros';
 
   const issn = process.env.JOURNAL_ISSN || '';
   const website = process.env.JOURNAL_WEBSITE || '';
@@ -1092,7 +1092,7 @@ export async function generatePaymentReceiptPdf({
     color: C.navy
   });
 
-  page.drawText('ijrise · EDITORIAL OFFICE', {
+  page.drawText('ijros · EDITORIAL OFFICE', {
     x: 52,
     y: height - 62,
     size: 11,

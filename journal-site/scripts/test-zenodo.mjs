@@ -83,7 +83,7 @@ async function main() {
 
   // 1. Generate test PDF.
   const pdf = createTestPdf();
-  const fileName = "ijrise-figshare-api-test.pdf";
+  const fileName = "ijros-figshare-api-test.pdf";
 
   fs.writeFileSync(`scripts/${fileName}`, pdf);
 

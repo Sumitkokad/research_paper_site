@@ -31,9 +31,9 @@ test('certificate allocation is idempotent and returns one certificate per autho
 
 test('certificate generator produces a valid PDF with a verification QR', async () => {
   const buffer = await generateCertificatePdf({
-    paper: { id: 'ijrise-2026-TEST', title: 'A test paper title for certificate layout', authors: [{ name: 'Author One' }, { name: 'Author Two' }], publishedAt: '2026-11-21T00:00:00.000Z', volume: 'Vol. 1', issue: 'Issue 11' },
-    certificate: { certificateId: 'ijrise-CERT-2026-TEST', authorIndex: 0, authorName: 'Author One' },
-    verifyUrl: 'https://example.org/verify/ijrise-CERT-2026-TEST'
+    paper: { id: 'ijros-2026-TEST', title: 'A test paper title for certificate layout', authors: [{ name: 'Author One' }, { name: 'Author Two' }], publishedAt: '2026-11-21T00:00:00.000Z', volume: 'Vol. 1', issue: 'Issue 11' },
+    certificate: { certificateId: 'ijros-CERT-2026-TEST', authorIndex: 0, authorName: 'Author One' },
+    verifyUrl: 'https://example.org/verify/ijros-CERT-2026-TEST'
   });
   assert.equal(buffer.subarray(0, 5).toString('ascii'), '%PDF-');
   assert.ok(buffer.length > 1500);
@@ -41,7 +41,7 @@ test('certificate generator produces a valid PDF with a verification QR', async 
 
 test('payment receipt generator produces a valid PDF', async () => {
   const buffer = await generatePaymentReceiptPdf({
-    paper: { id: 'ijrise-2026-TEST', title: 'A test research paper', submitterName: 'Author One' },
+    paper: { id: 'ijros-2026-TEST', title: 'A test research paper', submitterName: 'Author One' },
     payment: { receiptId: 'RCPT-TEST', amount: 1234, utr: '123456789012', submittedAt: '2026-11-21T00:00:00.000Z', confirmedAt: '2026-11-21T01:00:00.000Z' }
   });
   assert.equal(buffer.subarray(0, 5).toString('ascii'), '%PDF-');

@@ -1,6 +1,6 @@
 export const journal = {
   name: 'International Journal of Research and Innovation in Science and Engineering',
-  shortName: 'ijrise',
+  shortName: 'ijros',
   tagline: 'A digital home for research and innovation',
   description: 'An independent journal platform for scholarly work across science, technology and engineering.',
   siteUrl: import.meta.env.VITE_SITE_URL || window.location.origin,

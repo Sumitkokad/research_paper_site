@@ -57,7 +57,7 @@ export default function Submit() {
     }
   }
   return <>
-    <Meta title="Submit a manuscript" description="Submit your research manuscript to the ijrise editorial office."/>
+    <Meta title="Submit a manuscript" description="Submit your research manuscript to the ijros editorial office."/>
     <PageIntro eyebrow="Author centre" title={<>Submit your<br/><em>manuscript.</em></>} description="Share your research with the editorial office. The corresponding author receives a private paper reference and tracking token by email."/>
     <section className="section section-white"><div className="container form-page-grid">
       <div className="form-main">
