@@ -1,4 +1,3 @@
-
 import nodemailer from 'nodemailer';
 import { escapeHtml } from './core.mjs';
 
