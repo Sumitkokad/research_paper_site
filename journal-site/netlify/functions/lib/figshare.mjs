@@ -65,7 +65,7 @@ function articleMetadata(paper, paperUrl, licenseId = null) {
     authors: (paper.authors || [])
       .slice(0, 10)
       .map(author => ({ name: author.name })),
-    defined_type: "paper",
+    defined_type: "journal contribution",
     references: paperUrl ? [paperUrl] : [],
     tags: ["IJRISE", "journal article"]
   };
