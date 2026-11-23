@@ -1,4 +1,3 @@
-
 const API_ROOT = "https://api.figshare.com/v2";
 
 function getToken() {
@@ -125,7 +124,6 @@ export async function uploadFigsharePdf(articleId, fileName, buffer) {
     file => file.name === fileName
   );
 
-  // Prevent duplicate uploads when an admin retries the draft action.
   if (existingFile) {
     return {
       fileId: existingFile.id,
@@ -218,6 +216,37 @@ export async function uploadFigsharePdf(articleId, fileName, buffer) {
   };
 }
 
+// Read DOI from whichever record has it, without throwing.
+async function readDoiFast(articleId) {
+  // Try public record first (fastest path when already live).
+  try {
+    const pub = await figshareRequest(`/articles/${articleId}`);
+    const a = pub.data || {};
+    if (a.doi) {
+      return {
+        doi: a.doi,
+        recordUrl: a.url_public_html || "",
+        publishedAt: a.published_date || new Date().toISOString()
+      };
+    }
+  } catch {}
+
+  // Fall back to private record.
+  try {
+    const priv = await figshareRequest(`/account/articles/${articleId}`);
+    const a = priv.data || {};
+    if (a.doi) {
+      return {
+        doi: a.doi,
+        recordUrl: a.url_public_html || "",
+        publishedAt: a.published_date || new Date().toISOString()
+      };
+    }
+  } catch {}
+
+  return null;
+}
+
 export async function publishFigshareArticle(
   articleId,
   paper,
@@ -228,6 +257,18 @@ export async function publishFigshareArticle(
     throw new Error("A valid, author-approved Figshare license is required.");
   }
 
+  // Fast path: article is already live with a DOI — return immediately.
+  const existing = await readDoiFast(articleId);
+  if (existing) {
+    return {
+      articleId,
+      doi: existing.doi,
+      recordUrl: existing.recordUrl,
+      publishedAt: existing.publishedAt
+    };
+  }
+
+  // Not yet published — update metadata, then publish.
   await updateFigshareArticle(
     articleId,
     paper,
@@ -235,42 +276,42 @@ export async function publishFigshareArticle(
     licenseId
   );
 
-  await figshareRequest(
-    `/account/articles/${articleId}/publish`,
-    "POST"
-  );
-
-  // Read the public record to obtain the DOI and public URL.
-  const publicResult = await figshareRequest(
-    `/articles/${articleId}`
-  );
-
-  const publicArticle = publicResult.data || {};
-
-  // Also check the private record in case public metadata takes a moment.
-  let privateArticle = {};
-  if (!publicArticle.doi || !publicArticle.url_public_html) {
-    const privateResult = await figshareRequest(
-      `/account/articles/${articleId}`
+  try {
+    await figshareRequest(
+      `/account/articles/${articleId}/publish`,
+      "POST"
     );
-    privateArticle = privateResult.data || {};
+  } catch (error) {
+    // If the article got published by a concurrent retry, don't fail.
+    const check = await readDoiFast(articleId);
+    if (!check) throw error;
+    return {
+      articleId,
+      doi: check.doi,
+      recordUrl: check.recordUrl,
+      publishedAt: check.publishedAt
+    };
   }
 
-  const doi = publicArticle.doi || privateArticle.doi || "";
-  const recordUrl =
-    publicArticle.url_public_html ||
-    privateArticle.url_public_html ||
-    "";
+  // Poll every 1 second, up to 30 seconds, for the DOI to appear.
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const found = await readDoiFast(articleId);
+    if (found) {
+      return {
+        articleId,
+        doi: found.doi,
+        recordUrl: found.recordUrl,
+        publishedAt: found.publishedAt
+      };
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
 
-  return {
-    articleId,
-    doi,
-    recordUrl,
-    publishedAt:
-      publicArticle.published_date ||
-      privateArticle.published_date ||
-      new Date().toISOString()
-  };
+  throw new Error(
+    `Figshare accepted the publish request but no DOI appeared after 30 seconds. ` +
+    `Open https://figshare.com/account/articles/${articleId} to check the record. ` +
+    `If the DOI is visible there, click Publish again to finish the local finalisation.`
+  );
 }
 
 export async function getFigshareLicenses() {
