@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, BookOpen, FileCheck2, Globe2, Search, ShieldCheck, ExternalLink } from 'lucide-react';
-import { api, formatDate } from '../api';
+import { ArrowRight, FileCheck2, Globe2, Search, ShieldCheck, Download, FileText } from 'lucide-react';
+import { api } from '../api';
 import { journal } from '../config';
 import Meta from '../components/Meta';
 import { Loading, EmptyState } from '../components/Layout';
@@ -54,17 +54,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 2. Trust Bar: Immediate Credibility Signals */}
+      {/* 2. Trust Bar */}
       <div className="trust-bar">
         <div className="container trust-grid">
           <div className="trust-item"><strong>ISSN:</strong> {journal.issn || 'Verifying'}</div>
-          
           <div className="trust-item"><strong>DOI:</strong> Registered upon publication</div>
           <div className="trust-item"><strong>Certificates:</strong> QR-Verifiable</div>
         </div>
       </div>
 
-      {/* 3. Recent Articles: Clean, Scannable List */}
+      {/* 3. Recent Articles */}
       <section className="section section-surface">
         <div className="container">
           <div className="section-heading" style={{ textAlign: 'center' }}>
@@ -111,8 +110,68 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 4. Process: Clear, Step-by-Step */}
-      <section className="section">
+      {/* 4. Manuscript Template Section */}
+      <section className="section template-section">
+        <div className="container template-layout">
+          
+          <div className="template-copy">
+            {/* The requested Circular Logo & Heading */}
+            <div className="template-icon-circle">
+              <FileText size={32} />
+            </div>
+            <span className="eyebrow">For Authors</span>
+            <h2>Article Template</h2>
+            <p>
+              To ensure a smooth editorial process, all submissions must follow the official {journal.shortName.toUpperCase()} manuscript template. 
+              The template includes the correct margins, font sizes, heading structures, and reference formats.
+            </p>
+            <ul className="check-list" style={{ marginBottom: '32px' }}>
+              <li>Standard A4 format with 2.5cm margins.</li>
+              <li>Times New Roman, 11.5pt font size.</li>
+              <li>Properly structured Abstract and Keywords.</li>
+              <li>Pre-formatted reference styling.</li>
+            </ul>
+            <div className="template-actions">
+              {/* The Link for the Demo Article Template */}
+              <a href="/IJROS-Template.docx" download className="button button-primary">
+                <Download size={18} /> Download Word Template
+              </a>
+              <Link to="/guidelines" className="button button-light">
+                Read Author Guidelines
+              </Link>
+            </div>
+          </div>
+
+          {/* Mock Paper Preview */}
+          <div className="template-preview-wrapper">
+            <div className="mock-paper">
+              <div className="mock-header">
+                <strong>{journal.shortName.toUpperCase()}</strong>
+                <small>Open Access</small>
+              </div>
+              <h1>Sample Title of Your Research Paper</h1>
+              <p className="mock-authors">First Author¹, Second Author²</p>
+              <div className="mock-abstract">
+                <strong>Abstract</strong>
+                <p>The demand for safety and sustainable transportation brings innovation in vehicle technology. Bicycling is one of the oldest and fittest ways of transportation...</p>
+              </div>
+              <div className="mock-body">
+                <strong>1. Introduction</strong>
+                <p>The fundamental objective of multicultural education is to help students consider their diversity of ethnicity...</p>
+                <strong>2. Literature Review</strong>
+                <p>The existing studies in school choice document that parents take into account numerous factors...</p>
+              </div>
+            </div>
+            <div className="mock-badge">
+              <FileText size={16} /> Official Template
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* 5. Process */}
+      <section className="section section-surface">
         <div className="container">
           <div className="section-heading" style={{ textAlign: 'center' }}>
             <span className="eyebrow">Editorial Workflow</span>

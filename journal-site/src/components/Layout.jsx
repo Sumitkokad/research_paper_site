@@ -4,11 +4,7 @@ import { Menu, X, ArrowUpRight } from 'lucide-react';
 import { journal } from '../config';
 
 const links = [
-  ['Papers', '/papers'], 
-  ['About', '/about'], 
-  ['Author guidelines', '/guidelines'], 
-  ['Fees', '/fees'], 
-  ['Blogs', '/blogs']
+  ['Papers', '/papers'], ['About', '/about'], ['Author guidelines', '/guidelines'], ['Fees', '/fees'], ['Blogs', '/blogs']
 ];
 
 export function Header() {
