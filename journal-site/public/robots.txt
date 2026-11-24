@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Hide private author and editorial areas
+Disallow: /admin
+Disallow: /track
+Disallow: /pay
+Disallow: /api/
+
+Sitemap: https://ijros.com/sitemap.xml
