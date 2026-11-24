@@ -1,13 +1,6 @@
 // ============================================================
 // IJSCI / IJRISE CERTIFICATE & PAYMENT RECEIPT GENERATOR
-// Complete Netlify ES Module (Professional Layout)
-//
-// Dependencies:
-// pdf-lib, @pdf-lib/fontkit, qrcode
-//
-// Exports:
-// 1. generateCertificatePdf()
-// 2. generatePaymentReceiptPdf()
+// Complete Netlify ES Module (Pro Layout)
 // ============================================================
 
 import fs from 'node:fs/promises';
@@ -24,7 +17,6 @@ import QRCode from 'qrcode';
 // ------------------------------------------------------------
 // COLOR PALETTE
 // ------------------------------------------------------------
-
 const C = {
   navy: rgb(0.055, 0.105, 0.20),
   blue: rgb(0.10, 0.20, 0.38),
@@ -34,13 +26,12 @@ const C = {
   muted: rgb(0.36, 0.40, 0.46),
   pale: rgb(0.87, 0.83, 0.73),
   white: rgb(1, 1, 1),
-  green: rgb(0.16, 0.45, 0.31) // Professional academic green for indexing
+  green: rgb(0.16, 0.45, 0.31)
 };
 
 // ------------------------------------------------------------
 // FILE & IMAGE HELPERS
 // ------------------------------------------------------------
-
 async function optionalFile(envName, fallback) {
   const value = process.env[envName] || fallback;
   if (!value) return null;
@@ -64,19 +55,11 @@ async function loadImage(pdf, envVar, fallbackPath) {
 }
 
 // ------------------------------------------------------------
-// FONT LOADER
+// FONT LOADER & TEXT WRAPPING
 // ------------------------------------------------------------
-
 async function loadFonts(pdf) {
-  const regularBytes = await optionalFile(
-    'CERTIFICATE_FONT_PATH',
-    'public/fonts/NotoSerif-Regular.ttf'
-  );
-
-  const boldBytes = await optionalFile(
-    'CERTIFICATE_BOLD_FONT_PATH',
-    'public/fonts/NotoSerif-Bold.ttf'
-  );
+  const regularBytes = await optionalFile('CERTIFICATE_FONT_PATH', 'public/fonts/NotoSerif-Regular.ttf');
+  const boldBytes = await optionalFile('CERTIFICATE_BOLD_FONT_PATH', 'public/fonts/NotoSerif-Bold.ttf');
 
   if (regularBytes) {
     pdf.registerFontkit(fontkit);
@@ -94,17 +77,9 @@ async function loadFonts(pdf) {
 
 function checkFontText(text, fonts) {
   if (!fonts.unicode && /[^\u0000-\u00ff]/u.test(String(text || ''))) {
-    throw new Error(
-      'A certificate contains non-Latin characters. ' +
-      'Run npm run fonts:setup to install Noto Serif fonts. ' +
-      'No characters were removed.'
-    );
+    throw new Error('A certificate contains non-Latin characters.');
   }
 }
-
-// ------------------------------------------------------------
-// TEXT WRAPPING & FITTING
-// ------------------------------------------------------------
 
 function wrapText(text, font, size, maxWidth) {
   const sourceWords = String(text || '').split(/\s+/).filter(Boolean);
@@ -146,7 +121,6 @@ function wrapText(text, font, size, maxWidth) {
 
 function fitText(text, font, options) {
   const { maxWidth, maxHeight, maxSize, minSize = 8, lineHeightRatio = 1.25 } = options;
-
   for (let size = maxSize; size >= minSize; size = Math.round((size - 0.5) * 10) / 10) {
     const lines = wrapText(text, font, size, maxWidth);
     const lineHeight = size * lineHeightRatio;
@@ -154,7 +128,6 @@ function fitText(text, font, options) {
       return { lines, size, lineHeight };
     }
   }
-
   const size = minSize;
   const lines = wrapText(text, font, size, maxWidth);
   return { lines, size, lineHeight: size * lineHeightRatio };
@@ -163,22 +136,14 @@ function fitText(text, font, options) {
 // ------------------------------------------------------------
 // DRAWING HELPERS
 // ------------------------------------------------------------
-
 function drawCentered(page, text, y, font, size, color, width = 1000) {
   const value = String(text ?? '');
   const textWidth = font.widthOfTextAtSize(value, size);
-  page.drawText(value, {
-    x: Math.max(25, (width - textWidth) / 2),
-    y,
-    size,
-    font,
-    color
-  });
+  page.drawText(value, { x: Math.max(25, (width - textWidth) / 2), y, size, font, color });
 }
 
 function drawTextLines(page, lines, options) {
   const { centerX = 500, x, y, font, size, color, lineHeight = size * 1.3 } = options;
-
   lines.forEach((line, index) => {
     const lineY = y - index * lineHeight;
     if (typeof x === 'number') {
@@ -191,9 +156,8 @@ function drawTextLines(page, lines, options) {
 }
 
 // ------------------------------------------------------------
-// SEALS, BORDERS, AND MEDALS
+// GRAPHICS (Seal, Borders, Medal)
 // ------------------------------------------------------------
-
 function drawArcText(page, text, options) {
   const { cx, cy, radius, font, size, color, position = 'top' } = options;
   const characters = Array.from(String(text));
@@ -211,9 +175,7 @@ function drawArcText(page, text, options) {
       const x = cx + radius * Math.cos(angle);
       const y = cy + radius * Math.sin(angle);
       const charWidth = font.widthOfTextAtSize(char, size);
-      page.drawText(char, {
-        x: x - charWidth / 2, y: y - size * 0.35, font, size, color, rotate: degrees(rotation)
-      });
+      page.drawText(char, { x: x - charWidth / 2, y: y - size * 0.35, font, size, color, rotate: degrees(rotation) });
     }
     cursor += widths[index];
   });
@@ -244,10 +206,7 @@ function drawCertificateBorders(page) {
   const m = 40;
   const length = 24;
   const color = C.gold;
-  const corners = [
-    [m, 700 - m, 1, -1], [1000 - m, 700 - m, -1, -1],
-    [m, m, 1, 1], [1000 - m, m, -1, 1]
-  ];
+  const corners = [[m, 700 - m, 1, -1], [1000 - m, 700 - m, -1, -1], [m, m, 1, 1], [1000 - m, m, -1, 1]];
 
   for (const [x, y, sx, sy] of corners) {
     page.drawLine({ start: { x, y }, end: { x: x + sx * length, y }, thickness: 1, color });
@@ -277,9 +236,8 @@ function drawMedal(page, fonts, cx, cy, text) {
 }
 
 // ============================================================
-// 1. CERTIFICATE GENERATOR (The Pro Template)
+// 1. MAIN CERTIFICATE GENERATOR
 // ============================================================
-
 export async function generateCertificatePdf({ paper, certificate, verifyUrl }) {
   const pdf = await PDFDocument.create();
   const fonts = await loadFonts(pdf);
@@ -292,8 +250,6 @@ export async function generateCertificatePdf({ paper, certificate, verifyUrl }) 
   const issn = process.env.JOURNAL_ISSN || '';
   const website = process.env.JOURNAL_WEBSITE || '';
   const email = process.env.JOURNAL_EMAIL || '';
-  
-  // Use Figshare DOI if available
   const doi = paper.figshare?.doi || paper.doi || '';
 
   [paper.title, authorName, coauthors, paper.id, certificate.certificateId, journalName, shortName, issn, website, email, doi]
@@ -316,23 +272,25 @@ export async function generateCertificatePdf({ paper, certificate, verifyUrl }) 
   const figshareLogo = await loadImage(pdf, 'FIGSHARE_LOGO_PATH', 'public/brand/figshare.png');
   const scholarLogo = await loadImage(pdf, 'GOOGLE_SCHOLAR_LOGO_PATH', 'public/brand/google-scholar.png');
   
-  let currentLogosY = 620;
-  const logoMaxWidth = 80;
-  const logoMaxHeight = 25;
+  const logoMaxWidth = 140;
+  const logoMaxHeight = 45;
+  const rightEdgeX = 920;
+
+  let currentLogosY = 615;
 
   if (figshareLogo) {
     const dims = figshareLogo.scaleToFit(logoMaxWidth, logoMaxHeight);
-    page.drawImage(figshareLogo, { x: 870, y: currentLogosY, width: dims.width, height: dims.height });
-    currentLogosY -= 35; // Stack downwards
+    page.drawImage(figshareLogo, { x: rightEdgeX - dims.width, y: currentLogosY, width: dims.width, height: dims.height });
+    currentLogosY -= (dims.height + 20);
   }
 
   if (scholarLogo) {
     const dims = scholarLogo.scaleToFit(logoMaxWidth, logoMaxHeight);
-    page.drawImage(scholarLogo, { x: 870, y: currentLogosY, width: dims.width, height: dims.height });
+    page.drawImage(scholarLogo, { x: rightEdgeX - dims.width, y: currentLogosY, width: dims.width, height: dims.height });
   }
 
   // Center Text (Short Name & Full Name)
-  const logoFit = fitText(shortName, fonts.bold, { maxWidth: 530, maxHeight: 58, maxSize: 49, minSize: 25, lineHeightRatio: 1.1 });
+  const logoFit = fitText(shortName.toUpperCase(), fonts.bold, { maxWidth: 530, maxHeight: 58, maxSize: 49, minSize: 25, lineHeightRatio: 1.1 });
   drawTextLines(page, logoFit.lines, { centerX: 500, y: 618, font: fonts.bold, size: logoFit.size, color: C.navy });
 
   const journalFit = fitText(journalName.toUpperCase(), fonts.bold, { maxWidth: 610, maxHeight: 27, maxSize: 11.5, minSize: 8, lineHeightRatio: 1.15 });
@@ -352,11 +310,11 @@ export async function generateCertificatePdf({ paper, certificate, verifyUrl }) 
   // INDEXING LINE (DOI & Figshare)
   // ----------------------------------------------------------
   if (doi) {
-    const indexText = `INDEXED WITH FIGSHARE | DOI: ${doi}`;
+    const indexText = `FIGSHARE ID RECORD | DOI: ${doi}`;
     const indexFit = fitText(indexText, fonts.bold, { maxWidth: 800, maxHeight: 20, maxSize: 10, minSize: 8 });
     drawTextLines(page, indexFit.lines, { centerX: 500, y: 515, font: fonts.bold, size: indexFit.size, color: C.green });
   } else {
-    drawCentered(page, 'INDEXED WITH FIGSHARE', 515, fonts.bold, 9, C.green, 1000);
+    drawCentered(page, 'FIGSHARE ID RECORD', 515, fonts.bold, 9, C.green, 1000);
   }
 
   // ----------------------------------------------------------
@@ -405,11 +363,11 @@ export async function generateCertificatePdf({ paper, certificate, verifyUrl }) 
   const validDate = Number.isNaN(publishedDate.getTime()) ? new Date() : publishedDate;
   const dateLabel = validDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-  const volumeIssue = [
-    paper.volume ? `Volume ${paper.volume}` : '',
-    paper.issue ? `Issue ${paper.issue}` : ''
-  ].filter(Boolean).join(' | ');
-
+  // Fix duplicate "Vol." and "Issue" text
+  const volText = paper.volume ? (String(paper.volume).toLowerCase().startsWith('vol') ? paper.volume : `Vol. ${paper.volume}`) : '';
+  const issueText = paper.issue ? (String(paper.issue).toLowerCase().startsWith('issue') ? paper.issue : `Issue ${paper.issue}`) : '';
+  
+  const volumeIssue = [volText, issueText].filter(Boolean).join(' | ');
   const publishedLine = [`Published on ${dateLabel}`, volumeIssue].filter(Boolean).join(' | ');
 
   drawCentered(page, publishedLine, 170, fonts.regular, 9.5, C.muted, 1000);
@@ -441,8 +399,9 @@ export async function generateCertificatePdf({ paper, certificate, verifyUrl }) 
   }
 
   page.drawLine({ start: { x: 650, y: 73 }, end: { x: 790, y: 73 }, thickness: 0.8, color: C.navy });
-  page.drawText(process.env.EDITOR_NAME || 'Editor in Chief', { x: 650, y: 56, size: 9, font: fonts.bold, color: C.navy });
-  page.drawText(process.env.EDITOR_TITLE || 'Editorial Office', { x: 650, y: 43, size: 7.5, font: fonts.regular, color: C.muted });
+  
+  // Updated Editor Text (Removed the second line)
+  page.drawText(`Editor in Chief, ${shortName.toUpperCase()}`, { x: 650, y: 56, size: 9, font: fonts.bold, color: C.navy });
 
   // Right: QR Code
   if (verifyUrl) {
@@ -459,7 +418,6 @@ export async function generateCertificatePdf({ paper, certificate, verifyUrl }) 
 // ============================================================
 // 2. ORIGINAL PAYMENT RECEIPT GENERATOR (Preserved)
 // ============================================================
-
 export async function generatePaymentReceiptPdf({ paper, payment }) {
   const pdf = await PDFDocument.create();
   const fonts = await loadFonts(pdf);
@@ -505,7 +463,3 @@ export async function generatePaymentReceiptPdf({ paper, payment }) {
 
   return Buffer.from(await pdf.save());
 }
-
-// ============================================================
-// END OF MODULE
-// ============================================================
