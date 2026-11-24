@@ -1,5 +1,0 @@
-# 1. Force redirect from Netlify subdomain to your custom domain
-https://ijrise.netlify.app/*  https://ijros.com/:splat  301!
-
-# 2. React Router SPA fallback (Must be the last line)
-/*  /index.html  200

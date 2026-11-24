@@ -4,7 +4,7 @@ const blogSlugs = ['prepare-your-research-paper', 'understanding-editorial-revie
 export const config = { path: '/sitemap.xml' };
 
 export default async () => {
-  const base = (process.env.JOURNAL_SITE_URL || process.env.URL || 'https://your-journal-domain.example').replace(/\/$/, '');
+  const base = (process.env.JOURNAL_SITE_URL || process.env.URL || 'https://ijros.com').replace(/\/$/, '');
   try {
     const db = await readDatabase();
     const staticPaths = ['', '/papers', '/submit', '/about', '/guidelines', '/fees', '/contact', '/policies', '/blogs'];
