@@ -1,41 +1,80 @@
 import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { Menu, X, ArrowUpRight } from 'lucide-react';
+import { Menu, X, ArrowUpRight, Mail } from 'lucide-react';
 import { journal } from '../config';
 
 const links = [
-  ['Papers', '/papers'], ['About', '/about'], ['Author guidelines', '/guidelines'], ['Fees', '/fees'], ['Blogs', '/blogs']
+  ['Papers', '/papers'],
+  ['Articles', '/articles'],
+  ['Editorial board', '/editorial-board'],
+  ['About', '/about'],
+  ['Guidelines', '/guidelines'],
+  ['Fees', '/fees'],
+  ['Blogs', '/blogs'],
 ];
 
 export function Header() {
   const [open, setOpen] = useState(false);
   return (
-    <header className="site-header">
-      <div className="container nav-wrap">
-        <Link to="/" className="brand" onClick={() => setOpen(false)} aria-label={`${journal.shortName} home`}>
-          <span className="brand-text">
-            <strong>{journal.shortName.toUpperCase()}</strong>
-            <small>International Journal</small>
-          </span>
-        </Link>
-        
-        <button className="mobile-menu" aria-label={open ? 'Close navigation' : 'Open navigation'} onClick={() => setOpen(!open)}>
-          {open ? <X size={24}/> : <Menu size={24}/>}
-        </button>
-        
-        <nav className={`main-nav ${open ? 'is-open' : ''}`} aria-label="Main navigation">
-          {links.map(([label, to]) => (
-            <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
-              {label}
-            </NavLink>
-          ))}
-          <NavLink to="/track" onClick={() => setOpen(false)}>Track paper</NavLink>
-          <Link className="nav-submit" to="/submit" onClick={() => setOpen(false)}>
-            Submit paper <ArrowUpRight size={15}/>
-          </Link>
-        </nav>
+    <>
+      <div className="utility-bar">
+        <div className="container">
+          <div className="utility-left">
+            <span>{journal.issn || 'ISSN verifying'}</span>
+            <span className="dot" aria-hidden="true" />
+            <span>Peer-reviewed · Open Access · {journal.doiProvider} DOI</span>
+          </div>
+          <div className="utility-right">
+            <a href={`mailto:${journal.contactEmail}`}>
+              <Mail size={12} style={{ marginRight: 4, verticalAlign: '-2px' }} />
+              {journal.contactEmail}
+            </a>
+          </div>
+        </div>
       </div>
-    </header>
+
+      <header className="site-header">
+        <div className="container nav-wrap">
+          <Link
+            to="/"
+            className="brand"
+            onClick={() => setOpen(false)}
+            aria-label={`${journal.shortName} home`}
+          >
+            <span className="brand-mark">IJ</span>
+            <span className="brand-text">
+              <strong>{journal.shortName}</strong>
+              <small>International Journal</small>
+            </span>
+          </Link>
+
+          <button
+            className="mobile-menu"
+            aria-label={open ? 'Close navigation' : 'Open navigation'}
+            onClick={() => setOpen(!open)}
+          >
+            {open ? <X size={22} /> : <Menu size={22} />}
+          </button>
+
+          <nav className={`main-nav ${open ? 'is-open' : ''}`} aria-label="Main navigation">
+            {links.map(([label, to]) => (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={() => setOpen(false)}
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                {label}
+              </NavLink>
+            ))}
+            <NavLink to="/track" onClick={() => setOpen(false)}>Track</NavLink>
+            <Link className="nav-submit" to="/submit" onClick={() => setOpen(false)}>
+              Submit <ArrowUpRight size={14} />
+            </Link>
+          </nav>
+        </div>
+      </header>
+    </>
   );
 }
 
@@ -46,16 +85,17 @@ export function Footer() {
         <div className="footer-brand">
           <h3>{journal.name}</h3>
           <p>{journal.description}</p>
-          {journal.issn && <p style={{ marginTop: '12px', color: '#ccfbf1', fontWeight: '600' }}>ISSN: {journal.issn}</p>}
+          {journal.issn && <p className="footer-issn">{journal.issn}</p>}
         </div>
         <div>
           <h4>Explore</h4>
           <Link to="/papers">Published papers</Link>
-          <Link to="/about">About the journal</Link>
+          <Link to="/articles">Call for articles</Link>
+          <Link to="/editorial-board">Editorial board</Link>
           <Link to="/blogs">Research blog</Link>
         </div>
         <div>
-          <h4>For Authors</h4>
+          <h4>For authors</h4>
           <Link to="/submit">Submit manuscript</Link>
           <Link to="/track">Track submission</Link>
           <Link to="/guidelines">Author guidelines</Link>
@@ -63,22 +103,28 @@ export function Footer() {
         </div>
         <div>
           <h4>Policies</h4>
+          <Link to="/about">About the journal</Link>
           <Link to="/policies">Editorial policies</Link>
-          <Link to="/terms">Terms of use</Link>
           <Link to="/privacy">Privacy notice</Link>
           <Link to="/contact">Contact</Link>
         </div>
       </div>
       <div className="container footer-bottom">
-        <span>© {new Date().getFullYear()} {journal.shortName.toUpperCase()}. All rights reserved.</span>
-        <span>Open Access · DOI Registered · QR-Verified Certificates</span>
+        <span>© {new Date().getFullYear()} {journal.shortName}. All rights reserved.</span>
+        <span>Peer-reviewed · Open Access · {journal.doiProvider} DOI · QR-verified certificates</span>
       </div>
     </footer>
   );
 }
 
 export function Shell({ children }) {
-  return <><Header /><main>{children}</main><Footer /></>;
+  return (
+    <>
+      <Header />
+      <main>{children}</main>
+      <Footer />
+    </>
+  );
 }
 
 export function PageIntro({ eyebrow, title, description, children }) {
@@ -99,7 +145,12 @@ export function Notice({ type = 'info', children }) {
 }
 
 export function Loading({ label = 'Loading' }) {
-  return <div className="loading-state"><span className="spinner" aria-hidden="true"/><span>{label}…</span></div>;
+  return (
+    <div className="loading-state">
+      <span className="spinner" aria-hidden="true" />
+      <span>{label}…</span>
+    </div>
+  );
 }
 
 export function EmptyState({ title, description, action }) {

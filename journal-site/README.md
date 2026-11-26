@@ -224,7 +224,7 @@ The logo and signature are optional. Use only a logo and signature that the jour
 ## 6. DOI, ISSN and indexing — do not fabricate identifiers
 
 - The project generates an internal paper reference (`ijros-...`) and certificate ID. Neither is a DOI.
-- A DOI field is blank until an editor enters a genuine DOI that has been registered through an authorized registration agency. For Crossref DOI assignment, the journal must obtain the relevant membership/prefix and register the DOI metadata. This project does **not** mint or register DOIs.
+- A DOI field is blank until an editor enters a genuine DOI that has been registered through an authorized registration agency. For Figshare DOI assignment, the journal must obtain the relevant membership/prefix and register the DOI metadata. This project does **not** mint or register DOIs.
 - Keep `JOURNAL_ISSN` blank until an authentic ISSN has been assigned and verified. The example certificate image is a visual reference, not independent proof that a number is currently valid or belongs to the journal.
 - Google Scholar citation meta tags and ScholarlyArticle JSON-LD improve machine-readable metadata, but do not guarantee indexing. Do not add indexing logos, third-party badges, editorial-board names, review claims or accreditation claims unless they are real and documented.
 

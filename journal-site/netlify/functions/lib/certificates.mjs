@@ -1,6 +1,6 @@
 // ============================================================
-// IJSCI / IJRISE CERTIFICATE & PAYMENT RECEIPT GENERATOR
-// Complete Netlify ES Module (Pro Layout)
+// IJROS CERTIFICATE & PAYMENT RECEIPT GENERATOR
+// Theme: Forest Green + Cream + Brass (Matches Website)
 // ============================================================
 
 import fs from 'node:fs/promises';
@@ -15,18 +15,21 @@ import fontkit from '@pdf-lib/fontkit';
 import QRCode from 'qrcode';
 
 // ------------------------------------------------------------
-// COLOR PALETTE
+// IJROS BRAND PALETTE
 // ------------------------------------------------------------
 const C = {
-  navy: rgb(0.055, 0.105, 0.20),
-  blue: rgb(0.10, 0.20, 0.38),
-  gold: rgb(0.72, 0.56, 0.30),
-  cream: rgb(0.985, 0.973, 0.935),
-  ink: rgb(0.10, 0.12, 0.17),
-  muted: rgb(0.36, 0.40, 0.46),
-  pale: rgb(0.87, 0.83, 0.73),
+  green: rgb(0.122, 0.302, 0.227),      // #1f4d3a (Primary)
+  greenDark: rgb(0.086, 0.227, 0.169),  // #163a2b (Header/Left Band)
+  greenSoft: rgb(0.910, 0.937, 0.914),  // #e8efe9 (Soft Background)
+  cream: rgb(0.980, 0.969, 0.949),      // #faf7f2 (Page Background)
+  creamDeep: rgb(0.953, 0.929, 0.894),  // #f3ede4 (Cards)
+  brass: rgb(0.690, 0.553, 0.341),      // #b08d57 (Accent)
+  brassSoft: rgb(0.937, 0.894, 0.827),  // #efe4d3 (Light Accent Text)
+  ink: rgb(0.114, 0.145, 0.125),        // #1d2520 (Main Text)
+  inkLight: rgb(0.310, 0.353, 0.329),   // #4f5a54 (Secondary Text)
+  inkMuted: rgb(0.478, 0.522, 0.494),   // #7a857e (Muted Text)
   white: rgb(1, 1, 1),
-  green: rgb(0.16, 0.45, 0.31)
+  line: rgb(0.886, 0.867, 0.831)
 };
 
 // ------------------------------------------------------------
@@ -77,14 +80,13 @@ async function loadFonts(pdf) {
 
 function checkFontText(text, fonts) {
   if (!fonts.unicode && /[^\u0000-\u00ff]/u.test(String(text || ''))) {
-    throw new Error('A certificate contains non-Latin characters.');
+    throw new Error('A document contains non-Latin characters.');
   }
 }
 
 function wrapText(text, font, size, maxWidth) {
   const sourceWords = String(text || '').split(/\s+/).filter(Boolean);
   const words = [];
-
   for (const word of sourceWords) {
     if (font.widthOfTextAtSize(word, size) <= maxWidth) {
       words.push(word);
@@ -102,10 +104,8 @@ function wrapText(text, font, size, maxWidth) {
     }
     if (chunk) words.push(chunk);
   }
-
   const lines = [];
   let line = '';
-
   for (const word of words) {
     const candidate = line ? `${line} ${word}` : word;
     if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !line) {
@@ -133,333 +133,249 @@ function fitText(text, font, options) {
   return { lines, size, lineHeight: size * lineHeightRatio };
 }
 
-// ------------------------------------------------------------
-// DRAWING HELPERS
-// ------------------------------------------------------------
 function drawCentered(page, text, y, font, size, color, width = 1000) {
   const value = String(text ?? '');
   const textWidth = font.widthOfTextAtSize(value, size);
   page.drawText(value, { x: Math.max(25, (width - textWidth) / 2), y, size, font, color });
 }
 
-function drawTextLines(page, lines, options) {
-  const { centerX = 500, x, y, font, size, color, lineHeight = size * 1.3 } = options;
-  lines.forEach((line, index) => {
-    const lineY = y - index * lineHeight;
-    if (typeof x === 'number') {
-      page.drawText(String(line), { x, y: lineY, font, size, color });
-    } else {
-      drawCentered(page, line, lineY, font, size, color, centerX * 2);
-    }
-  });
-  return y - lines.length * lineHeight;
-}
-
 // ------------------------------------------------------------
-// GRAPHICS (Seal, Borders, Medal)
+// CUSTOM GRAPHICS
 // ------------------------------------------------------------
-function drawArcText(page, text, options) {
-  const { cx, cy, radius, font, size, color, position = 'top' } = options;
-  const characters = Array.from(String(text));
-  const gap = 0.35;
-  const widths = characters.map(char => font.widthOfTextAtSize(char, size) + gap);
-  const totalWidth = widths.reduce((sum, val) => sum + val, 0);
-  let cursor = -totalWidth / 2;
-
-  characters.forEach((char, index) => {
-    const midpoint = cursor + widths[index] / 2;
-    const angle = position === 'top' ? Math.PI / 2 - midpoint / radius : -Math.PI / 2 + midpoint / radius;
-    const rotation = position === 'top' ? angle * 180 / Math.PI - 90 : angle * 180 / Math.PI + 90;
-
-    if (char.trim()) {
-      const x = cx + radius * Math.cos(angle);
-      const y = cy + radius * Math.sin(angle);
-      const charWidth = font.widthOfTextAtSize(char, size);
-      page.drawText(char, { x: x - charWidth / 2, y: y - size * 0.35, font, size, color, rotate: degrees(rotation) });
-    }
-    cursor += widths[index];
-  });
-}
-
-function drawIJSCISeal(page, fonts, cx, cy) {
-  page.drawCircle({ x: cx, y: cy, size: 48, color: C.white, borderColor: C.navy, borderWidth: 2 });
-  page.drawCircle({ x: cx, y: cy, size: 42, borderColor: C.gold, borderWidth: 0.9 });
-  page.drawCircle({ x: cx, y: cy, size: 27, borderColor: C.pale, borderWidth: 0.8 });
-
-  drawArcText(page, 'INTERNATIONAL JOURNAL', { cx, cy, radius: 35, font: fonts.bold, size: 4.2, color: C.navy, position: 'top' });
-  drawArcText(page, 'SCIENCES & INNOVATION ENGINEERING', { cx, cy, radius: 35, font: fonts.bold, size: 3.6, color: C.navy, position: 'bottom' });
-
-  page.drawRectangle({ x: cx - 10, y: cy - 12, width: 20, height: 24, color: C.cream, borderColor: C.blue, borderWidth: 0.9 });
-
-  for (let i = 0; i < 3; i++) {
-    page.drawLine({ start: { x: cx - 6, y: cy + 5 - i * 5 }, end: { x: cx + 6, y: cy + 5 - i * 5 }, thickness: 0.7, color: C.blue });
+function drawSeal(page, cx, cy, fonts) {
+  // Outer solid circle
+  page.drawCircle({ x: cx, y: cy, size: 54, color: C.white, borderColor: C.brass, borderWidth: 1.5 });
+  // Inner dotted circle
+  const radius = 44;
+  const dots = 60;
+  for (let i = 0; i < dots; i++) {
+    const angle = (Math.PI * 2 * i) / dots;
+    const x = cx + radius * Math.cos(angle);
+    const y = cy + radius * Math.sin(angle);
+    page.drawCircle({ x, y, size: 0.8, color: C.brass });
   }
-
-  page.drawLine({ start: { x: cx - 5, y: cy - 8 }, end: { x: cx - 1, y: cy - 12 }, thickness: 1.3, color: C.gold });
-  page.drawLine({ start: { x: cx - 1, y: cy - 12 }, end: { x: cx + 7, y: cy - 4 }, thickness: 1.3, color: C.gold });
-}
-
-function drawCertificateBorders(page) {
-  page.drawRectangle({ x: 18, y: 18, width: 964, height: 664, borderColor: C.navy, borderWidth: 2 });
-  page.drawRectangle({ x: 28, y: 28, width: 944, height: 644, borderColor: C.gold, borderWidth: 0.8 });
-
-  const m = 40;
-  const length = 24;
-  const color = C.gold;
-  const corners = [[m, 700 - m, 1, -1], [1000 - m, 700 - m, -1, -1], [m, m, 1, 1], [1000 - m, m, -1, 1]];
-
-  for (const [x, y, sx, sy] of corners) {
-    page.drawLine({ start: { x, y }, end: { x: x + sx * length, y }, thickness: 1, color });
-    page.drawLine({ start: { x, y }, end: { x, y: y + sy * length }, thickness: 1, color });
-  }
-
-  page.drawLine({ start: { x: 45, y: 528 }, end: { x: 955, y: 528 }, thickness: 0.8, color: C.pale });
-  page.drawLine({ start: { x: 45, y: 119 }, end: { x: 955, y: 119 }, thickness: 0.8, color: C.pale });
-}
-
-function drawMedal(page, fonts, cx, cy, text) {
-  for (let i = 0; i < 16; i++) {
-    const angle = Math.PI * 2 * i / 16;
-    page.drawLine({
-      start: { x: cx + 21 * Math.cos(angle), y: cy + 21 * Math.sin(angle) },
-      end: { x: cx + 25 * Math.cos(angle), y: cy + 25 * Math.sin(angle) },
-      thickness: 1.2, color: C.gold
-    });
-  }
-  page.drawCircle({ x: cx, y: cy, size: 20, color: C.cream, borderColor: C.gold, borderWidth: 1.4 });
-  page.drawCircle({ x: cx, y: cy, size: 14, borderColor: C.pale, borderWidth: 0.8 });
-
-  drawCentered(page, text, cy - 3, fonts.bold, 8, C.navy, cx * 2);
-
-  page.drawLine({ start: { x: cx - 8, y: cy - 18 }, end: { x: cx - 5, y: cy - 31 }, thickness: 4, color: C.navy });
-  page.drawLine({ start: { x: cx + 8, y: cy - 18 }, end: { x: cx + 5, y: cy - 31 }, thickness: 4, color: C.blue });
+  // Center text "IJ"
+  const text = 'IJ';
+  const textWidth = fonts.bold.widthOfTextAtSize(text, 38);
+  page.drawText(text, { x: cx - textWidth / 2, y: cy - 13, size: 38, font: fonts.bold, color: C.greenDark });
 }
 
 // ============================================================
-// 1. MAIN CERTIFICATE GENERATOR
+// 1. CERTIFICATE OF PUBLICATION (Forest Band Style)
 // ============================================================
 export async function generateCertificatePdf({ paper, certificate, verifyUrl }) {
   const pdf = await PDFDocument.create();
   const fonts = await loadFonts(pdf);
 
   const authorName = certificate.authorName || paper.authors?.[certificate.authorIndex]?.name || 'Author';
-  const coauthors = (paper.authors || []).filter((_, i) => i !== certificate.authorIndex).map(a => a.name).filter(Boolean).join(', ');
-  
   const journalName = process.env.JOURNAL_NAME || 'International Journal of Research and Open Science';
-  const shortName = process.env.JOURNAL_SHORT_NAME || 'ijros';
-  const issn = process.env.JOURNAL_ISSN || '';
-  const website = process.env.JOURNAL_WEBSITE || '';
-  const email = process.env.JOURNAL_EMAIL || '';
+  const shortName = (process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase();
   const doi = paper.figshare?.doi || paper.doi || '';
+  const website = process.env.JOURNAL_WEBSITE || 'ijros.com';
 
-  [paper.title, authorName, coauthors, paper.id, certificate.certificateId, journalName, shortName, issn, website, email, doi]
-    .forEach(item => checkFontText(item, fonts));
+  [paper.title, authorName, paper.id, certificate.certificateId, journalName, shortName, doi].forEach(t => checkFontText(t, fonts));
 
+  // Landscape layout: 1000 x 700
   const page = pdf.addPage([1000, 700]);
 
-  // Background
+  // 1. Backgrounds
   page.drawRectangle({ x: 0, y: 0, width: 1000, height: 700, color: C.cream });
-  drawCertificateBorders(page);
-
-  // ----------------------------------------------------------
-  // HEADER (Seal Left, Logos Right, Journal Center)
-  // ----------------------------------------------------------
   
-  // Left Seal
-  drawIJSCISeal(page, fonts, 105, 610);
+  // Left Forest Green Band (Width: 260)
+  page.drawRectangle({ x: 0, y: 0, width: 260, height: 700, color: C.greenDark });
 
-  // Right Logos (Figshare & Google Scholar)
-  const figshareLogo = await loadImage(pdf, 'FIGSHARE_LOGO_PATH', 'public/brand/figshare.png');
-  const scholarLogo = await loadImage(pdf, 'GOOGLE_SCHOLAR_LOGO_PATH', 'public/brand/google-scholar.png');
+  // 2. Left Band Content
+  drawSeal(page, 130, 520, fonts);
+
+  drawCentered(page, shortName, 430, fonts.bold, 26, C.brass, 260);
   
-  const logoMaxWidth = 140;
-  const logoMaxHeight = 45;
-  const rightEdgeX = 920;
+  const indexing = [
+    'PEER-REVIEWED',
+    'OPEN ACCESS',
+    'DOI VIA FIGSHARE',
+    website
+  ];
+  let indexY = 380;
+  indexing.forEach(text => {
+    drawCentered(page, text, indexY, fonts.regular, 10, C.brassSoft, 260);
+    indexY -= 22;
+  });
 
-  let currentLogosY = 615;
-
-  if (figshareLogo) {
-    const dims = figshareLogo.scaleToFit(logoMaxWidth, logoMaxHeight);
-    page.drawImage(figshareLogo, { x: rightEdgeX - dims.width, y: currentLogosY, width: dims.width, height: dims.height });
-    currentLogosY -= (dims.height + 20);
-  }
-
-  if (scholarLogo) {
-    const dims = scholarLogo.scaleToFit(logoMaxWidth, logoMaxHeight);
-    page.drawImage(scholarLogo, { x: rightEdgeX - dims.width, y: currentLogosY, width: dims.width, height: dims.height });
-  }
-
-  // Center Text (Short Name & Full Name)
-  const logoFit = fitText(shortName.toUpperCase(), fonts.bold, { maxWidth: 530, maxHeight: 58, maxSize: 49, minSize: 25, lineHeightRatio: 1.1 });
-  drawTextLines(page, logoFit.lines, { centerX: 500, y: 618, font: fonts.bold, size: logoFit.size, color: C.navy });
-
-  const journalFit = fitText(journalName.toUpperCase(), fonts.bold, { maxWidth: 610, maxHeight: 27, maxSize: 11.5, minSize: 8, lineHeightRatio: 1.15 });
-  drawTextLines(page, journalFit.lines, { centerX: 500, y: 576, font: fonts.bold, size: journalFit.size, color: C.blue, lineHeight: 14 });
-
-  if (issn) {
-    drawCentered(page, `ISSN: ${issn}`, 550, fonts.regular, 8.5, C.muted, 1000);
-  }
-
-  const contactLine = [website, email].filter(Boolean).join(' | ');
-  if (contactLine) {
-    const contactFit = fitText(contactLine, fonts.regular, { maxWidth: 600, maxHeight: 12, maxSize: 7.5, minSize: 6, lineHeightRatio: 1.2 });
-    drawTextLines(page, contactFit.lines, { centerX: 500, y: 532, font: fonts.regular, size: contactFit.size, color: C.muted });
-  }
-
-  // ----------------------------------------------------------
-  // INDEXING LINE (DOI & Figshare)
-  // ----------------------------------------------------------
-  if (doi) {
-    const indexText = `FIGSHARE ID RECORD | DOI: ${doi}`;
-    const indexFit = fitText(indexText, fonts.bold, { maxWidth: 800, maxHeight: 20, maxSize: 10, minSize: 8 });
-    drawTextLines(page, indexFit.lines, { centerX: 500, y: 515, font: fonts.bold, size: indexFit.size, color: C.green });
-  } else {
-    drawCentered(page, 'FIGSHARE ID RECORD', 515, fonts.bold, 9, C.green, 1000);
-  }
-
-  // ----------------------------------------------------------
-  // CERTIFICATE TITLE
-  // ----------------------------------------------------------
-  drawCentered(page, 'CERTIFICATE', 460, fonts.bold, 37, C.ink, 1000);
-  drawCentered(page, 'OF PUBLICATION', 435, fonts.bold, 12, C.blue, 1000);
-
-  page.drawLine({ start: { x: 365, y: 420 }, end: { x: 635, y: 420 }, thickness: 1, color: C.gold });
-  page.drawCircle({ x: 500, y: 420, size: 3, color: C.gold });
-
-  drawCentered(page, 'THIS IS TO CERTIFY THAT', 385, fonts.bold, 10, C.blue, 1000);
-
-  // ----------------------------------------------------------
-  // AUTHOR & PAPER DETAILS
-  // ----------------------------------------------------------
-  const nameFit = fitText(authorName, fonts.bold, { maxWidth: 810, maxHeight: 48, maxSize: 29, minSize: 15, lineHeightRatio: 1.2 });
-  const nameY = 345;
-  drawTextLines(page, nameFit.lines, { centerX: 500, y: nameY, font: fonts.bold, size: nameFit.size, color: C.navy, lineHeight: nameFit.lineHeight });
-
-  const lastNameY = nameY - (nameFit.lines.length - 1) * nameFit.lineHeight;
-  const descriptionY = lastNameY - 26;
-
-  drawCentered(page, 'has authored the research paper entitled', descriptionY, fonts.regular, 11, C.muted, 1000);
-
-  // Paper Title
-  const titleStartY = descriptionY - 36;
-  const titleMaxHeight = Math.max(35, Math.min(125, titleStartY - 220));
-  const titleFit = fitText(paper.title, fonts.bold, { maxWidth: 815, maxHeight: titleMaxHeight, maxSize: 19, minSize: 7, lineHeightRatio: 1.3 });
-
-  drawTextLines(page, titleFit.lines, { centerX: 500, y: titleStartY, font: fonts.bold, size: titleFit.size, color: C.ink, lineHeight: titleFit.lineHeight });
-
-  let nextContentY = titleStartY - titleFit.lines.length * titleFit.lineHeight - 10;
-
-  // Co-authors
-  if (coauthors) {
-    const coauthorFit = fitText(`Co-authors: ${coauthors}`, fonts.regular, { maxWidth: 790, maxHeight: 29, maxSize: 8.5, minSize: 6, lineHeightRatio: 1.2 });
-    drawTextLines(page, coauthorFit.lines, { centerX: 500, y: nextContentY, font: fonts.regular, size: coauthorFit.size, color: C.muted, lineHeight: coauthorFit.lineHeight });
-    nextContentY -= coauthorFit.lines.length * coauthorFit.lineHeight + 5;
-  }
-
-  // ----------------------------------------------------------
-  // METADATA (Published Date, Vol/Issue, Paper ID)
-  // ----------------------------------------------------------
-  const publishedDate = paper.publishedAt ? new Date(paper.publishedAt) : new Date();
-  const validDate = Number.isNaN(publishedDate.getTime()) ? new Date() : publishedDate;
-  const dateLabel = validDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' });
-
-  // Fix duplicate "Vol." and "Issue" text
-  const volText = paper.volume ? (String(paper.volume).toLowerCase().startsWith('vol') ? paper.volume : `Vol. ${paper.volume}`) : '';
-  const issueText = paper.issue ? (String(paper.issue).toLowerCase().startsWith('issue') ? paper.issue : `Issue ${paper.issue}`) : '';
-  
-  const volumeIssue = [volText, issueText].filter(Boolean).join(' | ');
-  const publishedLine = [`Published on ${dateLabel}`, volumeIssue].filter(Boolean).join(' | ');
-
-  drawCentered(page, publishedLine, 170, fonts.regular, 9.5, C.muted, 1000);
-  drawCentered(page, `Paper ID: ${paper.id || 'N/A'}`, 150, fonts.regular, 9, C.muted, 1000);
-
-  // ----------------------------------------------------------
-  // FOOTER (Medal, Cert ID, Signature, QR)
-  // ----------------------------------------------------------
-  
-  // Left: Medal and Certificate ID
-  drawMedal(page, fonts, 100, 73, shortName.substring(0, 5).toUpperCase());
-
-  const idFit = fitText(`Certificate ID: ${certificate.certificateId}`, fonts.bold, { maxWidth: 350, maxHeight: 15, maxSize: 9, minSize: 6.5, lineHeightRatio: 1.2 });
-  drawTextLines(page, idFit.lines, { x: 164, y: 80, font: fonts.bold, size: idFit.size, color: C.navy });
-  
-  page.drawText('Digitally verifiable publication record', { x: 164, y: 61, size: 8, font: fonts.regular, color: C.muted });
-
-  // Center: Editor Signature
-  const signatureBytes = await optionalFile('EDITOR_SIGNATURE_PATH', 'public/brand/editor-signature.png');
-  if (signatureBytes) {
-    try {
-      const isPng = signatureBytes[0] === 0x89 && signatureBytes[1] === 0x50;
-      const signature = isPng ? await pdf.embedPng(signatureBytes) : await pdf.embedJpg(signatureBytes);
-      const dims = signature.scale(Math.min(125 / signature.width, 35 / signature.height));
-      page.drawImage(signature, { x: 650, y: 79, width: dims.width, height: dims.height });
-    } catch (error) {
-      console.error('Signature image error:', error.message);
-    }
-  }
-
-  page.drawLine({ start: { x: 650, y: 73 }, end: { x: 790, y: 73 }, thickness: 0.8, color: C.navy });
-  
-  // Updated Editor Text (Removed the second line)
-  page.drawText(`Editor in Chief, ${shortName.toUpperCase()}`, { x: 650, y: 56, size: 9, font: fonts.bold, color: C.navy });
-
-  // Right: QR Code
+  // 3. Right Area Content
+  // QR Code (Top Right)
   if (verifyUrl) {
     const qr = await QRCode.toBuffer(verifyUrl, { type: 'png', width: 240, margin: 1, errorCorrectionLevel: 'H' });
     const qrImage = await pdf.embedPng(qr);
-
-    page.drawImage(qrImage, { x: 875, y: 43, width: 65, height: 65 });
-    drawCentered(page, 'SCAN TO VERIFY', 32, fonts.bold, 6.3, C.blue, 1000);
+    page.drawImage(qrImage, { x: 880, y: 580, width: 70, height: 70 });
+    drawCentered(page, 'SCAN TO VERIFY', 565, fonts.bold, 7, C.greenDark, 1000); // approximate center
   }
+
+  // Journal Name Header
+  const headerFit = fitText(journalName.toUpperCase(), fonts.bold, { maxWidth: 600, maxHeight: 20, maxSize: 11, minSize: 8 });
+  headerFit.lines.forEach((line, i) => {
+    page.drawText(line, { x: 320, y: 620 - (i * 14), size: headerFit.size, font: fonts.bold, color: C.inkMuted });
+  });
+
+  // Main Title
+  page.drawText('Certificate of Publication', { x: 320, y: 540, size: 36, font: fonts.bold, color: C.greenDark });
+
+  // Certify Text
+  page.drawText('THIS IS TO CERTIFY THAT', { x: 320, y: 480, size: 10, font: fonts.bold, color: C.brass });
+
+  // Author Name
+  const nameFit = fitText(authorName, fonts.bold, { maxWidth: 620, maxHeight: 60, maxSize: 32, minSize: 18, lineHeightRatio: 1.1 });
+  let currentY = 420;
+  nameFit.lines.forEach((line) => {
+    page.drawText(line, { x: 320, y: currentY, size: nameFit.size, font: fonts.bold, color: C.ink });
+    currentY -= nameFit.lineHeight;
+  });
+
+  // Authored Text
+  page.drawText('has authored the research paper entitled', { x: 320, y: currentY - 10, size: 12, font: fonts.regular, color: C.inkLight });
+
+  // Paper Title (Bold, Italic)
+  const titleFit = fitText(paper.title, fonts.bold, { maxWidth: 600, maxHeight: 80, maxSize: 18, minSize: 10, lineHeightRatio: 1.3 });
+  let titleY = currentY - 50;
+  titleFit.lines.forEach((line) => {
+    page.drawText(line, { x: 320, y: titleY, size: titleFit.size, font: fonts.bold, color: C.ink });
+    titleY -= titleFit.lineHeight;
+  });
+
+  // 4. Bottom Metadata Area
+  const bottomY = 140;
+  page.drawLine({ start: { x: 320, y: bottomY + 30 }, end: { x: 950, y: bottomY + 30 }, thickness: 0.5, color: C.brass });
+
+  // Published Date & Volume/Issue
+  const pubDate = paper.publishedAt ? new Date(paper.publishedAt) : new Date();
+  const dateLabel = pubDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const volText = paper.volume ? (String(paper.volume).toLowerCase().startsWith('vol') ? paper.volume : `Volume ${paper.volume}`) : '';
+  const issueText = paper.issue ? (String(paper.issue).toLowerCase().startsWith('issue') ? paper.issue : `Issue ${paper.issue}`) : '';
+  const pubLine = [`Published ${dateLabel}`, volText, issueText].filter(Boolean).join(' · ');
+  
+  page.drawText(pubLine, { x: 320, y: bottomY, size: 10, font: fonts.regular, color: C.inkLight });
+
+  // IDs
+  page.drawText(`Certificate ID ${certificate.certificateId}`, { x: 320, y: bottomY - 20, size: 9, font: fonts.regular, color: C.inkMuted });
+  page.drawText(`Paper ID ${paper.id}`, { x: 500, y: bottomY - 20, size: 9, font: fonts.regular, color: C.inkMuted });
+  if (doi) {
+    page.drawText(`DOI ${doi}`, { x: 320, y: bottomY - 36, size: 9, font: fonts.regular, color: C.greenDark });
+  }
+
+  // Editorial Office Sign-off (Bottom Right)
+  page.drawLine({ start: { x: 800, y: bottomY + 10 }, end: { x: 950, y: bottomY + 10 }, thickness: 0.8, color: C.ink });
+  page.drawText('Editorial Office', { x: 800, y: bottomY - 6, size: 10, font: fonts.bold, color: C.ink });
+  page.drawText(`Editor, ${shortName}`, { x: 800, y: bottomY - 20, size: 9, font: fonts.regular, color: C.inkMuted });
 
   return Buffer.from(await pdf.save());
 }
 
 // ============================================================
-// 2. ORIGINAL PAYMENT RECEIPT GENERATOR (Preserved)
+// 2. PAYMENT RECEIPT (Matching Website Theme)
 // ============================================================
 export async function generatePaymentReceiptPdf({ paper, payment }) {
   const pdf = await PDFDocument.create();
   const fonts = await loadFonts(pdf);
 
-  [paper.title, paper.id, paper.submitterName, paper.authors?.[0]?.name, payment.utr].forEach(item => checkFontText(item, fonts));
+  const journalName = process.env.JOURNAL_NAME || 'International Journal of Research and Open Science';
+  const shortName = (process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase();
+  const issn = process.env.JOURNAL_ISSN || '';
+  const contactEmail = process.env.JOURNAL_EMAIL || process.env.JOURNAL_CONTACT_EMAIL || process.env.EDITORIAL_INBOX || '';
+  const website = process.env.JOURNAL_WEBSITE || '';
 
+  [paper.title, paper.id, paper.submitterName, payment.utr].forEach(t => checkFontText(t, fonts));
+
+  // Portrait A4: 595 x 842
   const page = pdf.addPage([595, 842]);
   const { width, height } = page.getSize();
 
-  page.drawRectangle({ x: 0, y: 0, width, height, color: C.white });
-  page.drawRectangle({ x: 26, y: 26, width: width - 52, height: height - 52, borderColor: C.navy, borderWidth: 1.4 });
-  page.drawRectangle({ x: 26, y: height - 170, width: width - 52, height: 144, color: C.navy });
+  // 1. Background
+  page.drawRectangle({ x: 0, y: 0, width, height, color: C.cream });
 
-  page.drawText('ijros · EDITORIAL OFFICE', { x: 52, y: height - 62, size: 11, font: fonts.bold, color: C.gold });
-  page.drawText('PAYMENT RECEIPT', { x: 52, y: height - 111, size: 27, font: fonts.bold, color: C.white });
-  page.drawText('Manual UPI payment confirmation', { x: 54, y: height - 137, size: 10, font: fonts.regular, color: C.white });
+  // 2. Header Band
+  const headerHeight = 160;
+  page.drawRectangle({ x: 0, y: height - headerHeight, width, height: headerHeight, color: C.greenDark });
+  page.drawRectangle({ x: 0, y: height - headerHeight, width, height: 2, color: C.brass });
 
-  const fields = [
-    ['Receipt reference', payment.receiptId || `RCPT-${paper.id}`],
-    ['Paper ID', paper.id],
-    ['Manuscript', paper.title],
-    ['Payer / submitting author', paper.submitterName || paper.authors?.[0]?.name || 'Author'],
-    ['Amount received', `INR ${Number(payment.amount || 0).toFixed(2)}`],
-    ['UPI transaction reference (UTR)', payment.utr],
-    ['Payment submitted', payment.submittedAt ? new Date(payment.submittedAt).toLocaleString('en-IN') : ''],
-    ['Payment verified', payment.confirmedAt ? new Date(payment.confirmedAt).toLocaleString('en-IN') : ''],
-    ['Verification status', 'CONFIRMED BY EDITORIAL OFFICE']
-  ];
+  page.drawText(shortName, { x: 40, y: height - 60, size: 32, font: fonts.bold, color: C.white });
+  page.drawText('International Journal', { x: 40, y: height - 80, size: 9, font: fonts.regular, color: C.brassSoft });
+  
+  page.drawText('PAYMENT RECEIPT', { x: 40, y: height - 125, size: 22, font: fonts.bold, color: C.white });
+  page.drawText('Manual UPI payment confirmation · Official record', { x: 40, y: height - 145, size: 10, font: fonts.regular, color: C.brassSoft });
 
-  let y = height - 220;
-  for (const [label, value] of fields) {
-    page.drawText(String(label), { x: 54, y, size: 9, font: fonts.bold, color: C.muted });
-    const lines = wrapText(String(value || ''), fonts.regular, 10, 455);
-    lines.slice(0, 2).forEach((line, index) => {
-      page.drawText(line, { x: 54, y: y - 17 - index * 13, size: 10, font: fonts.regular, color: C.ink });
+  const marginX = 40;
+  const blockWidth = width - 80;
+  let y = height - headerHeight - 30;
+
+  // 3. Amount Block
+  page.drawRectangle({ x: marginX, y: y - 80, width: blockWidth, height: 80, color: C.greenSoft, borderColor: C.green, borderWidth: 0.5 });
+  page.drawText('AMOUNT RECEIVED', { x: marginX + 20, y: y - 25, size: 8, font: fonts.bold, color: C.greenDark });
+  page.drawText(`INR ${Number(payment.amount || 0).toFixed(2)}`, { x: marginX + 20, y: y - 60, size: 26, font: fonts.bold, color: C.greenDark });
+
+  // Verified Badge
+  const badgeW = 130;
+  const badgeH = 30;
+  page.drawRectangle({ x: marginX + blockWidth - badgeW - 20, y: y - 55, width: badgeW, height: badgeH, color: C.green });
+  const badgeText = 'PAYMENT VERIFIED';
+  const badgeTextW = fonts.bold.widthOfTextAtSize(badgeText, 8);
+  page.drawText(badgeText, { x: marginX + blockWidth - badgeW - 20 + (badgeW - badgeTextW) / 2, y: y - 45, size: 8, font: fonts.bold, color: C.white });
+
+  y -= 110;
+
+  // 4. Details Grid
+  const drawField = (label, value, isMuted = false) => {
+    page.drawText(label, { x: marginX, y, size: 9, font: fonts.bold, color: C.inkMuted });
+    const lines = wrapText(String(value || '—'), fonts.regular, 11, blockWidth - 160);
+    lines.forEach((line, i) => {
+      page.drawText(line, { x: marginX + 160, y: y - (i * 14), size: 11, font: fonts.regular, color: isMuted ? C.inkMuted : C.ink });
     });
-    y -= 52;
+    y -= (lines.length * 14) + 14;
+  };
+
+  const formatDate = (iso) => iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+  drawField('Receipt Reference', payment.receiptId || `RCPT-${paper.id}`);
+  drawField('Paper ID', paper.id);
+  drawField('Manuscript', paper.title);
+  drawField('Payer', paper.submitterName || paper.authors?.[0]?.name || 'Author');
+  drawField('UPI Reference (UTR)', payment.utr);
+  drawField('Payment Submitted', formatDate(payment.submittedAt));
+  drawField('Payment Verified', formatDate(payment.confirmedAt));
+  drawField('Status', 'CONFIRMED BY EDITORIAL OFFICE', true);
+
+  y -= 10;
+
+  // 5. Note Box
+  const noteText = 'This receipt confirms that the journal has marked the submitted UPI payment as received. Keep this document with your publication records. A receipt does not by itself constitute acceptance or publication of the manuscript.';
+  const noteLines = wrapText(noteText, fonts.regular, 9, blockWidth - 40);
+  const noteHeight = (noteLines.length * 13) + 24;
+
+  page.drawRectangle({ x: marginX, y: y - noteHeight, width: blockWidth, height: noteHeight, color: C.creamDeep, borderColor: C.line, borderWidth: 0.5 });
+  page.drawRectangle({ x: marginX, y: y - noteHeight, width: 3, height: noteHeight, color: C.brass });
+
+  let noteY = y - 16;
+  noteLines.forEach(line => {
+    page.drawText(line, { x: marginX + 16, y: noteY, size: 9, font: fonts.regular, color: C.inkLight });
+    noteY -= 13;
+  });
+
+  // 6. Footer
+  const footerY = 50;
+  page.drawLine({ start: { x: marginX, y: footerY + 30 }, end: { x: width - marginX, y: footerY + 30 }, thickness: 0.5, color: C.brass });
+
+  page.drawText(journalName, { x: marginX, y: footerY + 12, size: 9, font: fonts.bold, color: C.greenDark });
+  
+  const contactParts = [];
+  if (issn) contactParts.push(`ISSN ${issn}`);
+  if (website) contactParts.push(website);
+  if (contactEmail) contactParts.push(contactEmail);
+  
+  if (contactParts.length) {
+    page.drawText(contactParts.join('   ·   '), { x: marginX, y: footerY - 4, size: 8, font: fonts.regular, color: C.inkMuted });
   }
 
-  page.drawText('This receipt confirms that the journal marked the submitted UPI payment as received.', { x: 54, y: 104, size: 8.5, font: fonts.regular, color: C.muted });
-  page.drawText('Keep this receipt with your publication records.', { x: 54, y: 88, size: 8.5, font: fonts.regular, color: C.muted });
-  page.drawText(process.env.JOURNAL_NAME || 'International Journal of Research and Open Science', { x: 54, y: 56, size: 8, font: fonts.bold, color: C.navy });
+  const stamp = `${shortName} · Generated ${new Date().toLocaleDateString('en-IN')}`;
+  const stampW = fonts.regular.widthOfTextAtSize(stamp, 8);
+  page.drawText(stamp, { x: width - marginX - stampW, y: footerY - 4, size: 8, font: fonts.regular, color: C.inkMuted });
 
   return Buffer.from(await pdf.save());
 }
