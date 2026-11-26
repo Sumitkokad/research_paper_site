@@ -407,10 +407,7 @@ export function Contact() {
             <a className="contact-email" href={`mailto:${journal.contactEmail}`}>
               {journal.contactEmail} <ArrowUpRight size={15} />
             </a>
-            <small>
-              Replace the placeholder address with a mailbox on a domain you
-              control before going live.
-            </small>
+            
           </div>
 
           <div className="prose">
