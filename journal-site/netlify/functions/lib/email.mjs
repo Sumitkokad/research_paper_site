@@ -75,18 +75,30 @@ function getFirst(...values) {
   );
 }
 
+// --- IJROS Theme Elements ---
+
 function button(url, label) {
   if (!url) return '';
 
   return `
-    <p style="margin:24px 0;">
-      <a href="${html(url)}"
-         style="display:inline-block;background:#173b63;color:#ffffff;
-                padding:12px 22px;border-radius:6px;text-decoration:none;
-                font-weight:600;">
-        ${html(label)}
-      </a>
-    </p>
+    <table border="0" cellspacing="0" cellpadding="0" style="margin:24px 0;">
+      <tr>
+        <td align="center" style="border-radius:6px; background-color:#1f4d3a;">
+          <a href="${html(url)}" target="_blank" style="font-size:14px; font-family: Helvetica, Arial, sans-serif; color:#ffffff; text-decoration:none; padding:14px 28px; border-radius:6px; border:1px solid #1f4d3a; display:inline-block; font-weight:bold;">
+            ${html(label)}
+          </a>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function codeBlock(text) {
+  if (!text) return '';
+  return `
+    <div style="background-color:#faf7f2; border:1px solid #e2ddd4; border-left:4px solid #b08d57; padding:12px 16px; border-radius:4px; font-family:monospace; font-size:14px; color:#1d2520; word-break:break-all; margin:12px 0;">
+      ${html(text)}
+    </div>
   `;
 }
 
@@ -99,26 +111,47 @@ function emailLayout(title, body) {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${html(title)}</title>
     </head>
-    <body style="margin:0;padding:0;background:#f4f6f8;
-                 font-family:Arial,Helvetica,sans-serif;color:#263445;">
-      <div style="max-width:650px;margin:30px auto;background:#ffffff;
-                  border:1px solid #e5e9ee;border-radius:10px;overflow:hidden;">
-        <div style="background:#173b63;padding:24px;text-align:center;">
-          <h2 style="margin:0;color:#ffffff;font-size:21px;">
-            ${html(process.env.MAIL_FROM_NAME || 'Journal Editorial Office')}
-          </h2>
-        </div>
+    <body style="margin:0; padding:0; background-color:#faf7f2; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+      <table border="0" cellspacing="0" cellpadding="0" width="100%" style="background-color:#faf7f2; padding: 30px 10px;">
+        <tr>
+          <td align="center">
+            <table border="0" cellspacing="0" cellpadding="0" width="100%" style="max-width: 600px; background-color:#ffffff; border: 1px solid #e2ddd4; border-radius: 8px; overflow: hidden;">
+              
+              <!-- Header -->
+              <tr>
+                <td align="center" style="background-color:#163a2b; padding: 30px 20px;">
+                  <h1 style="margin:0; color:#b08d57; font-size:28px; font-weight:700; letter-spacing:1px; font-family: Georgia, serif;">
+                    ${html((process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase())}
+                  </h1>
+                  <p style="margin:8px 0 0; color:#faf7f2; font-size:11px; font-weight:500; letter-spacing:1.5px; text-transform:uppercase;">
+                    Editorial Office
+                  </p>
+                </td>
+              </tr>
 
-        <div style="padding:30px;line-height:1.65;font-size:15px;">
-          ${body}
-        </div>
+              <!-- Body -->
+              <tr>
+                <td style="padding: 40px 30px; line-height: 1.65; font-size: 15px; color: #1d2520;">
+                  ${body}
+                </td>
+              </tr>
 
-        <div style="background:#f7f9fb;padding:18px 25px;
-                    text-align:center;color:#6b7280;font-size:12px;">
-          This is an automated email from the journal editorial system.
-          Please do not reply unless the journal has provided a reply address.
-        </div>
-      </div>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#f3ede4; padding: 24px 20px; text-align: center; border-top: 1px solid #e2ddd4;">
+                  <p style="margin: 0 0 8px; color: #4f5a54; font-size: 12px; line-height: 1.5;">
+                    This is an automated message from the ${html((process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase())} editorial system.<br>Please do not reply directly to this email.
+                  </p>
+                  <p style="margin: 0; color: #7a857e; font-size: 11px;">
+                    ${html(process.env.JOURNAL_NAME || 'International Journal of Research and Open Science')}
+                  </p>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
@@ -133,30 +166,21 @@ function makeEmail(type, paper = {}, options = {}) {
   const paperId = getPaperId(paper);
   const siteUrl = getSiteUrl(options);
 
-  const trackingUrl = makeUrl(
-    getFirst(options.trackingUrl, paper.trackingUrl),
-    siteUrl
-  );
-
-  const paperUrl = makeUrl(
-    getFirst(options.paperUrl, paper.paperUrl, paper.publicUrl),
-    siteUrl
-  );
-
-  const paymentUrl = makeUrl(
-    getFirst(options.paymentUrl, paper.paymentUrl),
-    siteUrl
-  );
+  const trackingUrl = makeUrl(getFirst(options.trackingUrl, paper.trackingUrl), siteUrl);
+  const paperUrl = makeUrl(getFirst(options.paperUrl, paper.paperUrl, paper.publicUrl), siteUrl);
+  const paymentUrl = makeUrl(getFirst(options.paymentUrl, paper.paymentUrl), siteUrl);
 
   const reason = getFirst(options.reason, options.comments, options.message);
   const amount = getFirst(options.amount, paper.amount, paper.paymentAmount);
   const utr = getFirst(options.utr, paper.utr, paper.paymentUtr);
 
-  const greeting = `<p>Dear ${html(author)},</p>`;
+  const greeting = `<p style="margin-top:0;">Dear ${html(author)},</p>`;
 
   const manuscript = `
-    <p><strong>Manuscript:</strong> ${html(title)}</p>
-    <p><strong>Reference ID:</strong> ${html(paperId)}</p>
+    <div style="margin: 20px 0; padding: 16px; background-color: #faf7f2; border-radius: 6px; border: 1px solid #e2ddd4;">
+      <p style="margin: 0 0 8px; font-size: 14px;"><strong>Manuscript:</strong> ${html(title)}</p>
+      <p style="margin: 0; font-size: 14px; color: #4f5a54;"><strong>Reference ID:</strong> ${html(paperId)}</p>
+    </div>
   `;
 
   let subject = '';
@@ -164,48 +188,35 @@ function makeEmail(type, paper = {}, options = {}) {
   let textBody = '';
 
   switch (type) {
-        case 'submitted':
+    case 'submitted':
       subject = `Manuscript received – ${paperId}`;
       body = `
         ${greeting}
         <p>We have successfully received your manuscript.</p>
         ${manuscript}
-        <p>Your submission is now in the editorial review process.
-           You will receive another email when the editorial team updates its status.</p>
-        <p><strong>Paper ID:</strong> ${html(paperId)}</p>
-        <p><strong>Private tracking token:</strong><br>
-           <code style="display:inline-block;background:#f4f6f8;padding:6px 10px;border-radius:4px;font-family:monospace;font-size:13px;word-break:break-all;">${html(options.token || '')}</code>
-        </p>
-        <p>Save both values — the link below is the fastest way back to your submission.</p>
+        <p>Your submission is now in the editorial review process. You will receive another email when the editorial team updates its status.</p>
+        
+        <p style="margin-top:24px; margin-bottom:8px;"><strong>Private tracking token:</strong></p>
+        ${codeBlock(options.token || '')}
+        
+        <p>Save both the Paper ID and this token — the link below is the fastest way back to your submission.</p>
         ${button(trackingUrl, 'Track Your Submission')}
-        <p>Thank you for submitting your work.</p>
+        <p>Thank you for submitting your work to IJROS.</p>
       `;
-      textBody = `Dear ${author},
-
-Your manuscript has been received.
-Title: ${title}
-Reference ID: ${paperId}
-Private tracking token: ${options.token || ''}
-Track your submission: ${trackingUrl || 'Use the journal tracking page.'}`;
+      textBody = `Dear ${author},\n\nYour manuscript has been received.\nTitle: ${title}\nReference ID: ${paperId}\nPrivate tracking token: ${options.token || ''}\nTrack your submission: ${trackingUrl || 'Use the journal tracking page.'}`;
       break;
 
     case 'accepted':
       subject = `Manuscript accepted – ${paperId}`;
       body = `
         ${greeting}
-        <p>We are pleased to inform you that your manuscript has been accepted
-           for the next stage of the journal's publication process.</p>
+        <p>We are pleased to inform you that your manuscript has been accepted for the next stage of the journal's publication process.</p>
         ${manuscript}
-        <p>Please follow the payment or editorial instructions provided by the journal.</p>
+        <p>Please follow the payment or editorial instructions provided below.</p>
         ${button(paymentUrl, 'View Payment Instructions')}
         ${button(trackingUrl, 'Track Your Submission')}
       `;
-      textBody = `Dear ${author},
-
-Your manuscript has been accepted for the next stage.
-Title: ${title}
-Reference ID: ${paperId}
-${paymentUrl ? `Payment instructions: ${paymentUrl}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
+      textBody = `Dear ${author},\n\nYour manuscript has been accepted.\nTitle: ${title}\nReference ID: ${paperId}\n${paymentUrl ? `Payment instructions: ${paymentUrl}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
       break;
 
     case 'revision':
@@ -214,34 +225,23 @@ ${paymentUrl ? `Payment instructions: ${paymentUrl}\n` : ''}${trackingUrl ? `Tra
         ${greeting}
         <p>The editorial team has reviewed your manuscript and requests revisions.</p>
         ${manuscript}
-        ${reason ? `<p><strong>Editorial comments:</strong><br>${html(reason)}</p>` : ''}
+        ${reason ? `<p><strong>Editorial comments:</strong></p><div style="background:#faf7f2; padding:16px; border-radius:6px; border-left:4px solid #b08d57; margin:16px 0; color:#4f5a54; font-style:italic;">${html(reason).replace(/\n/g, '<br>')}</div>` : ''}
         <p>Please review the comments and submit the revised manuscript through the journal.</p>
-        ${button(trackingUrl, 'View Submission')}
+        ${button(trackingUrl, 'Upload Revision')}
       `;
-      textBody = `Dear ${author},
-
-Revision is required for your manuscript.
-Title: ${title}
-Reference ID: ${paperId}
-${reason ? `Editorial comments: ${reason}\n` : ''}${trackingUrl ? `Submission: ${trackingUrl}` : ''}`;
+      textBody = `Dear ${author},\n\nRevision is required.\nTitle: ${title}\nReference ID: ${paperId}\n${reason ? `Editorial comments: ${reason}\n` : ''}${trackingUrl ? `Submission: ${trackingUrl}` : ''}`;
       break;
 
     case 'rejected':
       subject = `Manuscript decision – ${paperId}`;
       body = `
         ${greeting}
-        <p>Thank you for submitting your manuscript. After editorial review,
-           we regret to inform you that the journal is unable to accept it for publication.</p>
+        <p>Thank you for submitting your manuscript. After editorial review, we regret to inform you that the journal is unable to accept it for publication.</p>
         ${manuscript}
-        ${reason ? `<p><strong>Editorial comments:</strong><br>${html(reason)}</p>` : ''}
+        ${reason ? `<p><strong>Editorial comments:</strong></p><div style="background:#faf7f2; padding:16px; border-radius:6px; border-left:4px solid #b08d57; margin:16px 0; color:#4f5a54; font-style:italic;">${html(reason).replace(/\n/g, '<br>')}</div>` : ''}
         <p>We appreciate your interest in the journal.</p>
       `;
-      textBody = `Dear ${author},
-
-The journal is unable to accept your manuscript.
-Title: ${title}
-Reference ID: ${paperId}
-${reason ? `Editorial comments: ${reason}` : ''}`;
+      textBody = `Dear ${author},\n\nThe journal is unable to accept your manuscript.\nTitle: ${title}\nReference ID: ${paperId}\n${reason ? `Editorial comments: ${reason}` : ''}`;
       break;
 
     case 'payment_received':
@@ -250,22 +250,12 @@ ${reason ? `Editorial comments: ${reason}` : ''}`;
         ${greeting}
         <p>Your payment has been reviewed and confirmed by the journal.</p>
         ${manuscript}
-        ${amount ? `<p><strong>Amount:</strong> ${html(amount)}</p>` : ''}
+        ${amount ? `<p><strong>Amount:</strong> INR ${html(amount)}</p>` : ''}
         ${utr ? `<p><strong>UTR / Transaction Reference:</strong> ${html(utr)}</p>` : ''}
-        <p><strong>Important:</strong> Payment confirmation does not itself publish
-           your manuscript. The editorial team will complete the remaining checks
-           and handle repository submission and publication separately.</p>
+        <p><strong>Important:</strong> Payment confirmation does not itself publish your manuscript. The editorial team will complete the remaining checks and handle repository submission and publication separately.</p>
         ${button(trackingUrl, 'Track Your Submission')}
-        <p>Thank you.</p>
       `;
-      textBody = `Dear ${author},
-
-Your payment has been confirmed.
-Title: ${title}
-Reference ID: ${paperId}
-${amount ? `Amount: ${amount}\n` : ''}${utr ? `UTR: ${utr}\n` : ''}
-Payment confirmation does not itself publish your manuscript. Publication will take place separately after the remaining checks and repository process.
-${trackingUrl ? `Track your submission: ${trackingUrl}` : ''}`;
+      textBody = `Dear ${author},\n\nYour payment has been confirmed.\nTitle: ${title}\nReference ID: ${paperId}\n${amount ? `Amount: ${amount}\n` : ''}${utr ? `UTR: ${utr}\n` : ''}Payment confirmation does not itself publish your manuscript.`;
       break;
 
     case 'payment_submitted':
@@ -274,20 +264,12 @@ ${trackingUrl ? `Track your submission: ${trackingUrl}` : ''}`;
         ${greeting}
         <p>We have received your payment details and transaction reference.</p>
         ${manuscript}
-        ${amount ? `<p><strong>Amount submitted:</strong> ${html(amount)}</p>` : ''}
+        ${amount ? `<p><strong>Amount submitted:</strong> INR ${html(amount)}</p>` : ''}
         ${utr ? `<p><strong>UTR / Transaction Reference:</strong> ${html(utr)}</p>` : ''}
-        <p>The journal team will verify the transaction. Your manuscript will not
-           be published automatically when payment details are submitted.</p>
+        <p>The journal team will verify the transaction. Your manuscript will not be published automatically when payment details are submitted.</p>
         ${button(trackingUrl, 'Track Your Submission')}
       `;
-      textBody = `Dear ${author},
-
-Your payment details have been received and are awaiting verification.
-Title: ${title}
-Reference ID: ${paperId}
-${amount ? `Amount: ${amount}\n` : ''}${utr ? `UTR: ${utr}\n` : ''}
-Payment submission does not automatically publish your manuscript.
-${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
+      textBody = `Dear ${author},\n\nYour payment details have been received and are awaiting verification.\nTitle: ${title}\nReference ID: ${paperId}\n${amount ? `Amount: ${amount}\n` : ''}${utr ? `UTR: ${utr}\n` : ''}`;
       break;
 
     case 'payment_rejected':
@@ -300,52 +282,21 @@ ${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
         <p>Please review the details and contact the journal if you need assistance.</p>
         ${button(trackingUrl, 'View Submission')}
       `;
-      textBody = `Dear ${author},
-
-Your payment could not be confirmed.
-Title: ${title}
-Reference ID: ${paperId}
-${reason ? `Reason: ${reason}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
+      textBody = `Dear ${author},\n\nYour payment could not be confirmed.\nTitle: ${title}\nReference ID: ${paperId}\n${reason ? `Reason: ${reason}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
       break;
 
     case 'publication': {
       subject = `Your manuscript has been published – ${paperId}`;
 
-      const doiValue = getFirst(
-        options.doi,
-        paper.doi,
-        paper.figshare?.doi
-      );
-
+      const doiValue = getFirst(options.doi, paper.doi, paper.figshare?.doi);
       const doi = normalizeDoi(doiValue);
-
-      const figshareUrl = makeUrl(
-        getFirst(
-          options.figshareUrl,
-          options.recordUrl,
-          paper.figshare?.recordUrl,
-          paper.figshare?.url
-        ),
-        siteUrl
-      );
-
+      const figshareUrl = makeUrl(getFirst(options.figshareUrl, options.recordUrl, paper.figshare?.recordUrl, paper.figshare?.url), siteUrl);
       const recordUrl = figshareUrl || (doi ? doi.url : '');
 
-      const doiHtml = doi
-        ? `<p><strong>DOI:</strong> <a href="${html(doi.url)}">${html(doi.value)}</a></p>`
-        : '';
-
-      const recordHtml = recordUrl
-        ? button(recordUrl, 'View Figshare Publication Record')
-        : '';
-
-      const doiText = doi
-        ? `DOI: ${doi.value}\nDOI link: ${doi.url}\n`
-        : '';
-
-      const recordText = recordUrl
-        ? `Figshare record: ${recordUrl}\n`
-        : '';
+      const doiHtml = doi ? `<p><strong>DOI:</strong> <a href="${html(doi.url)}" style="color:#1f4d3a; font-weight:bold;">${html(doi.value)}</a></p>` : '';
+      const recordHtml = recordUrl ? button(recordUrl, 'View Figshare Record') : '';
+      const doiText = doi ? `DOI: ${doi.value}\nDOI link: ${doi.url}\n` : '';
+      const recordText = recordUrl ? `Figshare record: ${recordUrl}\n` : '';
 
       body = `
         ${greeting}
@@ -354,16 +305,10 @@ ${reason ? `Reason: ${reason}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}`
         ${doiHtml}
         ${recordHtml}
         ${button(paperUrl, 'View Published Paper')}
-        <p>Thank you for publishing with our journal.</p>
+        <p>Thank you for publishing with IJROS.</p>
       `;
 
-      textBody = `Dear ${author},
-
-Your manuscript has been published.
-Title: ${title}
-Reference ID: ${paperId}
-${doiText}${recordText}${paperUrl ? `Journal paper: ${paperUrl}\n` : ''}
-Thank you for publishing with our journal.`;
+      textBody = `Dear ${author},\n\nYour manuscript has been published.\nTitle: ${title}\nReference ID: ${paperId}\n${doiText}${recordText}${paperUrl ? `Journal paper: ${paperUrl}\n` : ''}`;
       break;
     }
 
@@ -376,12 +321,7 @@ Thank you for publishing with our journal.`;
         ${reason ? `<p>${html(reason)}</p>` : ''}
         ${button(trackingUrl, 'Track Your Submission')}
       `;
-      textBody = `Dear ${author},
-
-There has been an update to your manuscript's publication status.
-Title: ${title}
-Reference ID: ${paperId}
-${reason ? `${reason}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
+      textBody = `Dear ${author},\n\nThere has been an update to your manuscript's publication status.\nTitle: ${title}\nReference ID: ${paperId}\n${reason ? `${reason}\n` : ''}`;
       break;
 
     case 'claimed':
@@ -390,22 +330,13 @@ ${reason ? `${reason}\n` : ''}${trackingUrl ? `Tracking: ${trackingUrl}` : ''}`;
         ${greeting}
         <p>A request was made to access your manuscript tracking information.</p>
         ${manuscript}
-        <p><strong>Paper ID:</strong> ${html(paperId)}</p>
-        <p><strong>Private tracking token:</strong><br>
-           <code style="display:inline-block;background:#f4f6f8;padding:6px 10px;border-radius:4px;font-family:monospace;font-size:13px;word-break:break-all;">${html(options.token || '')}</code>
-        </p>
+        <p style="margin-top:24px; margin-bottom:8px;"><strong>Private tracking token:</strong></p>
+        ${codeBlock(options.token || '')}
         <p>Use the secure link below, or enter these details manually on the Track page.</p>
         ${button(trackingUrl, 'Access Submission Tracking')}
-        <p>If you did not request this email, you can ignore it.</p>
+        <p>If you did not request this email, you can safely ignore it.</p>
       `;
-      textBody = `Dear ${author},
-
-A request was made to access your manuscript tracking information.
-Title: ${title}
-Reference ID: ${paperId}
-Private tracking token: ${options.token || ''}
-${trackingUrl ? `Secure tracking link: ${trackingUrl}\n` : ''}
-If you did not request this email, ignore this message.`;
+      textBody = `Dear ${author},\n\nA request was made to access your manuscript tracking information.\nTitle: ${title}\nReference ID: ${paperId}\nPrivate tracking token: ${options.token || ''}\n${trackingUrl ? `Secure tracking link: ${trackingUrl}\n` : ''}`;
       break;
 
     default:
@@ -421,27 +352,15 @@ If you did not request this email, ignore this message.`;
 
 function validateEmailAddress(address) {
   const value = clean(address);
-
-  if (
-    !value ||
-    value.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-  ) {
+  if (!value || value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
     throw new Error(`Invalid email address: ${value || '(empty)'}`);
   }
-
   return value;
 }
 
 function getSender() {
-  const address = validateEmailAddress(
-    process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER
-  );
-
-  const name = clean(
-    process.env.MAIL_FROM_NAME || 'Journal Editorial Office'
-  ).replace(/[\r\n"]/g, '');
-
+  const address = validateEmailAddress(process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER);
+  const name = clean(process.env.MAIL_FROM_NAME || 'IJROS Editorial Office').replace(/[\r\n"]/g, '');
   return name ? `"${name}" <${address}>` : address;
 }
 
@@ -452,18 +371,14 @@ function getTransporter() {
   const password = clean(process.env.SMTP_PASSWORD);
 
   if (!host) throw new Error('SMTP_HOST is not configured.');
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('SMTP_PORT is invalid.');
-  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('SMTP_PORT is invalid.');
   if (!user) throw new Error('SMTP_USER is not configured.');
   if (!password) throw new Error('SMTP_PASSWORD is not configured.');
 
   const secure = clean(process.env.SMTP_SECURE).toLowerCase() === 'true';
 
   return nodemailer.createTransport({
-    host,
-    port,
-    secure,
+    host, port, secure,
     auth: { user, pass: password },
     connectionTimeout: EMAIL_TIMEOUT_MS,
     greetingTimeout: EMAIL_TIMEOUT_MS,
@@ -473,38 +388,19 @@ function getTransporter() {
 
 function prepareAttachments(attachments = []) {
   return attachments.map(attachment => {
-    if (!attachment || typeof attachment !== 'object') {
-      throw new Error('Invalid email attachment.');
-    }
+    if (!attachment || typeof attachment !== 'object') throw new Error('Invalid email attachment.');
+    
+    const filename = clean(attachment.filename || attachment.name || 'attachment').split(/[\\/]/).pop();
+    if (!filename) throw new Error('Email attachment filename is missing.');
 
-    const filename = clean(
-      attachment.filename || attachment.name || 'attachment'
-    ).split(/[\\/]/).pop();
-
-    if (!filename) {
-      throw new Error('Email attachment filename is missing.');
-    }
-
-    const source =
-      attachment.content ??
-      attachment.data ??
-      attachment.buffer;
-
-    if (source === undefined || source === null) {
-      throw new Error(`Attachment content is missing: ${filename}`);
-    }
+    const source = attachment.content ?? attachment.data ?? attachment.buffer;
+    if (source === undefined || source === null) throw new Error(`Attachment content is missing: ${filename}`);
 
     let content;
-
-    if (Buffer.isBuffer(source)) {
-      content = source;
-    } else if (source instanceof Uint8Array) {
-      content = Buffer.from(source);
-    } else if (typeof source === 'string') {
-      content = Buffer.from(source, 'utf8');
-    } else {
-      throw new Error(`Unsupported attachment content: ${filename}`);
-    }
+    if (Buffer.isBuffer(source)) content = source;
+    else if (source instanceof Uint8Array) content = Buffer.from(source);
+    else if (typeof source === 'string') content = Buffer.from(source, 'utf8');
+    else throw new Error(`Unsupported attachment content: ${filename}`);
 
     return {
       filename,
@@ -514,23 +410,11 @@ function prepareAttachments(attachments = []) {
   });
 }
 
-async function sendViaSmtp({
-  to,
-  subject,
-  html: htmlContent,
-  text,
-  attachments = []
-}) {
-  const recipients = (Array.isArray(to) ? to : [to])
-    .filter(Boolean)
-    .map(validateEmailAddress);
-
-  if (!recipients.length) {
-    throw new Error('No email recipient was provided.');
-  }
+async function sendViaSmtp({ to, subject, html: htmlContent, text, attachments = [] }) {
+  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean).map(validateEmailAddress);
+  if (!recipients.length) throw new Error('No email recipient was provided.');
 
   const replyTo = clean(process.env.MAIL_REPLY_TO);
-
   const transporter = getTransporter();
 
   try {
@@ -543,14 +427,7 @@ async function sendViaSmtp({
       text: text || undefined,
       attachments: prepareAttachments(attachments)
     });
-
-    return {
-      success: true,
-      messageId: info.messageId,
-      provider: 'smtp',
-      accepted: info.accepted,
-      rejected: info.rejected
-    };
+    return { success: true, messageId: info.messageId, provider: 'smtp', accepted: info.accepted, rejected: info.rejected };
   } catch (error) {
     throw new Error(`SMTP email failed: ${clean(error.message).slice(0, 500)}`);
   } finally {
@@ -558,53 +435,30 @@ async function sendViaSmtp({
   }
 }
 
-export async function sendEmail({
-  to,
-  type,
-  paper = {},
-  options = {},
-  attachments = []
-}) {
-  if (!type) {
-    throw new Error('Email type is required.');
-  }
-
-  if (!Array.isArray(attachments)) {
-    throw new Error('Attachments must be an array.');
-  }
+export async function sendEmail({ to, type, paper = {}, options = {}, attachments = [] }) {
+  if (!type) throw new Error('Email type is required.');
+  if (!Array.isArray(attachments)) throw new Error('Attachments must be an array.');
 
   const message = makeEmail(type, paper, options);
 
   return sendViaSmtp({
-    to,
-    subject: message.subject,
-    html: message.html,
-    text: message.text,
-    attachments
+    to, subject: message.subject, html: message.html, text: message.text, attachments
   });
 }
 
 export async function sendAdminNotice(subject, message) {
-  const adminEmail = clean(
-    process.env.EDITORIAL_INBOX || process.env.ADMIN_EMAIL
-  );
-
-  if (!adminEmail) {
-    throw new Error('EDITORIAL_INBOX or ADMIN_EMAIL is not configured.');
-  }
+  const adminEmail = clean(process.env.EDITORIAL_INBOX || process.env.ADMIN_EMAIL);
+  if (!adminEmail) throw new Error('EDITORIAL_INBOX or ADMIN_EMAIL is not configured.');
 
   const safeSubject = clean(subject) || 'Journal admin notification';
   const safeMessage = clean(message);
 
   const htmlContent = emailLayout(
     safeSubject,
-    `<p>${html(safeMessage).replace(/\n/g, '<br>')}</p>`
+    `<p style="white-space: pre-wrap;">${html(safeMessage)}</p>`
   );
 
   return sendViaSmtp({
-    to: adminEmail,
-    subject: safeSubject,
-    html: htmlContent,
-    text: safeMessage
+    to: adminEmail, subject: safeSubject, html: htmlContent, text: safeMessage
   });
 }
