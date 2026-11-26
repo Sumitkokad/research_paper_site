@@ -1,92 +1,216 @@
 // ============================================================
 // IJROS CERTIFICATE & PAYMENT RECEIPT GENERATOR
-// Theme: Forest Green + Cream + Brass (Matches Website)
+// "Forest Band" layout  -  Netlify ES module
+//
+// Layout (matches 2__Forest_Band.pdf):
+//   left   : forest-green band with seal, wordmark, tags and the
+//            verification QR code (bottom, inside the band)
+//   right  : Figshare / Google Scholar pill (top right), journal
+//            name, certificate title, author, paper, metadata
+//   footer : certificate / paper / DOI + editor signature line
+//
+// Exports (unchanged):
+//   generateCertificatePdf({ paper, certificate, verifyUrl })
+//   generatePaymentReceiptPdf({ paper, payment })
 // ============================================================
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {
-  PDFDocument,
-  StandardFonts,
-  rgb,
-  degrees
-} from 'pdf-lib';
+import { fileURLToPath } from 'node:url';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import QRCode from 'qrcode';
 
 // ------------------------------------------------------------
-// IJROS BRAND PALETTE
+// PAGE GEOMETRY
+// All layout numbers below are in a 1308 x 924 design grid with a
+// TOP-LEFT origin (same proportions as A4 landscape). Y() flips them
+// into PDF coordinates. At the end the page is scaled to A4 landscape.
 // ------------------------------------------------------------
+const W = 1308;
+const H = 924;
+const A4_LANDSCAPE_WIDTH = 841.89;
+const Y = (top) => H - top;
+
+// ------------------------------------------------------------
+// COLOR PALETTE
+// ------------------------------------------------------------
+const hex = (value) => {
+  const n = parseInt(value.slice(1), 16);
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+};
+
 const C = {
-  green: rgb(0.122, 0.302, 0.227),      // #1f4d3a (Primary)
-  greenDark: rgb(0.086, 0.227, 0.169),  // #163a2b (Header/Left Band)
-  greenSoft: rgb(0.910, 0.937, 0.914),  // #e8efe9 (Soft Background)
-  cream: rgb(0.980, 0.969, 0.949),      // #faf7f2 (Page Background)
-  creamDeep: rgb(0.953, 0.929, 0.894),  // #f3ede4 (Cards)
-  brass: rgb(0.690, 0.553, 0.341),      // #b08d57 (Accent)
-  brassSoft: rgb(0.937, 0.894, 0.827),  // #efe4d3 (Light Accent Text)
-  ink: rgb(0.114, 0.145, 0.125),        // #1d2520 (Main Text)
-  inkLight: rgb(0.310, 0.353, 0.329),   // #4f5a54 (Secondary Text)
-  inkMuted: rgb(0.478, 0.522, 0.494),   // #7a857e (Muted Text)
-  white: rgb(1, 1, 1),
-  line: rgb(0.886, 0.867, 0.831)
+  band: hex('#183a2e'),
+  bandDeep: hex('#12302a'),
+  bandLine: hex('#2f5f4d'),
+  gold: hex('#c29d5a'),
+  goldLine: hex('#d6bc82'),
+  goldText: hex('#9a7030'),
+  cream: hex('#faf6ec'),
+  title: hex('#153a2c'),
+  ink: hex('#1c2433'),
+  muted: hex('#5b6168'),
+  pale: hex('#d9dfbd'),
+  white: hex('#ffffff'),
+  pill: hex('#fffdf8'),
+  pillBorder: hex('#e0d4b0'),
+  divider: hex('#d9d3c3'),
+  qrDark: hex('#0f2a20'),
+  green: hex('#1b5e3a'),
+  // legacy names used by the payment receipt
+  navy: hex('#183a2e')
 };
 
 // ------------------------------------------------------------
-// FILE & IMAGE HELPERS
+// FILE HELPERS (work locally and inside a Netlify function bundle)
 // ------------------------------------------------------------
-async function optionalFile(envName, fallback) {
-  const value = process.env[envName] || fallback;
-  if (!value) return null;
-  try {
-    return await fs.readFile(path.resolve(process.cwd(), value));
-  } catch {
-    return null;
-  }
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+function searchRoots() {
+  return [
+    ...new Set(
+      [
+        process.cwd(),
+        process.env.LAMBDA_TASK_ROOT,
+        MODULE_DIR,
+        path.resolve(MODULE_DIR, '..'),
+        path.resolve(MODULE_DIR, '../..'),
+        path.resolve(MODULE_DIR, '../../..')
+      ].filter(Boolean)
+    )
+  ];
 }
 
-async function loadImage(pdf, envVar, fallbackPath) {
-  const bytes = await optionalFile(envVar, fallbackPath);
+async function readFirst(candidates) {
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const rel = String(raw).trim().replace(/\\/g, '/');
+    if (!rel) continue;
+
+    const targets = path.isAbsolute(rel)
+      ? [rel]
+      : searchRoots().map((root) => path.resolve(root, rel));
+
+    for (const target of targets) {
+      try {
+        return await fs.readFile(target);
+      } catch {
+        // try next location
+      }
+    }
+  }
+  return null;
+}
+
+// optionalFile('ENV_NAME', 'default/path', 'other/default') -> Buffer | null
+async function optionalFile(envName, ...fallbacks) {
+  return readFirst([process.env[envName], ...fallbacks]);
+}
+
+async function embedImageBytes(pdf, bytes, label) {
   if (!bytes) return null;
   try {
     const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
-    return isPng ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+    const isJpg = bytes[0] === 0xff && bytes[1] === 0xd8;
+    if (isPng) return await pdf.embedPng(bytes);
+    if (isJpg) return await pdf.embedJpg(bytes);
+    console.error(`Unsupported image format (use PNG or JPG): ${label}`);
+    return null;
   } catch (error) {
-    console.error(`Failed to embed image: ${envVar}`, error.message);
+    console.error(`Failed to embed image: ${label}`, error.message);
     return null;
   }
 }
 
+async function loadImage(pdf, envVar, ...fallbackPaths) {
+  const bytes = await optionalFile(envVar, ...fallbackPaths);
+  if (!bytes) {
+    console.warn(`Logo not found for ${envVar}; certificate will render without it.`);
+    return null;
+  }
+  return embedImageBytes(pdf, bytes, envVar);
+}
+
 // ------------------------------------------------------------
-// FONT LOADER & TEXT WRAPPING
+// FONTS
+//   serif (headings, names)  : CERTIFICATE_FONT_PATH / _BOLD / _ITALIC
+//   sans  (labels, metadata) : CERTIFICATE_SANS_FONT_PATH / _SANS_BOLD
+// Anything missing falls back to a built-in PDF font, so the
+// certificate always renders.
 // ------------------------------------------------------------
 async function loadFonts(pdf) {
-  const regularBytes = await optionalFile('CERTIFICATE_FONT_PATH', 'public/fonts/NotoSerif-Regular.ttf');
-  const boldBytes = await optionalFile('CERTIFICATE_BOLD_FONT_PATH', 'public/fonts/NotoSerif-Bold.ttf');
+  const [regularBytes, boldBytes, italicBytes, sansBytes, sansBoldBytes] = await Promise.all([
+    optionalFile('CERTIFICATE_FONT_PATH', 'public/fonts/NotoSerif-Regular.ttf', 'public/fonts/Lora-Regular.ttf'),
+    optionalFile('CERTIFICATE_BOLD_FONT_PATH', 'public/fonts/NotoSerif-Bold.ttf', 'public/fonts/Lora-Bold.ttf'),
+    optionalFile('CERTIFICATE_ITALIC_FONT_PATH', 'public/fonts/NotoSerif-Italic.ttf', 'public/fonts/Lora-Italic.ttf'),
+    optionalFile('CERTIFICATE_SANS_FONT_PATH', 'public/fonts/DMSans-Regular.ttf', 'public/fonts/NotoSans-Regular.ttf'),
+    optionalFile('CERTIFICATE_SANS_BOLD_FONT_PATH', 'public/fonts/DMSans-Bold.ttf', 'public/fonts/NotoSans-Bold.ttf')
+  ]);
 
-  if (regularBytes) {
+  if ([regularBytes, boldBytes, italicBytes, sansBytes, sansBoldBytes].some(Boolean)) {
     pdf.registerFontkit(fontkit);
-    const regular = await pdf.embedFont(regularBytes, { subset: true });
-    const bold = boldBytes ? await pdf.embedFont(boldBytes, { subset: true }) : regular;
-    return { regular, bold, unicode: true };
   }
 
-  return {
-    regular: await pdf.embedFont(StandardFonts.TimesRoman),
-    bold: await pdf.embedFont(StandardFonts.TimesRomanBold),
-    unicode: false
+  const embed = async (bytes) => {
+    if (!bytes) return null;
+    try {
+      return await pdf.embedFont(bytes, { subset: true });
+    } catch (error) {
+      console.error('Font embed failed, using fallback:', error.message);
+      return null;
+    }
   };
+
+  // Serif family
+  let regular = await embed(regularBytes);
+  const unicode = Boolean(regular);
+  let bold;
+  let italic;
+
+  if (unicode) {
+    bold = (await embed(boldBytes)) || regular;
+    italic = (await embed(italicBytes)) || bold; // no italic file -> bold, still Unicode-safe
+  } else {
+    regular = await pdf.embedFont(StandardFonts.TimesRoman);
+    bold = await pdf.embedFont(StandardFonts.TimesRomanBold);
+    italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
+  }
+
+  // Sans family
+  let sans = await embed(sansBytes);
+  const sansUnicode = Boolean(sans);
+  let sansBold;
+  if (sansUnicode) {
+    sansBold = (await embed(sansBoldBytes)) || sans;
+  } else {
+    sans = await pdf.embedFont(StandardFonts.Helvetica);
+    sansBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  }
+
+  return { regular, bold, italic, sans, sansBold, unicode, sansUnicode };
 }
 
+// Throws when text cannot be shown with built-in fonts (author / title text).
 function checkFontText(text, fonts) {
   if (!fonts.unicode && /[^\u0000-\u00ff]/u.test(String(text || ''))) {
-    throw new Error('A document contains non-Latin characters.');
+    throw new Error('A certificate contains non-Latin characters.');
   }
 }
 
+// For short labels set in the sans font: never fail, just replace.
+function sansSafe(text, fonts) {
+  const value = String(text ?? '');
+  return fonts.sansUnicode ? value : value.replace(/[^\u0000-\u00ff]/gu, '?');
+}
+
+// ------------------------------------------------------------
+// TEXT HELPERS
+// ------------------------------------------------------------
 function wrapText(text, font, size, maxWidth) {
   const sourceWords = String(text || '').split(/\s+/).filter(Boolean);
   const words = [];
+
   for (const word of sourceWords) {
     if (font.widthOfTextAtSize(word, size) <= maxWidth) {
       words.push(word);
@@ -104,8 +228,10 @@ function wrapText(text, font, size, maxWidth) {
     }
     if (chunk) words.push(chunk);
   }
+
   const lines = [];
   let line = '';
+
   for (const word of words) {
     const candidate = line ? `${line} ${word}` : word;
     if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !line) {
@@ -133,249 +259,555 @@ function fitText(text, font, options) {
   return { lines, size, lineHeight: size * lineHeightRatio };
 }
 
-function drawCentered(page, text, y, font, size, color, width = 1000) {
+function spacedWidth(text, font, size, spacing) {
+  const chars = Array.from(String(text));
+  const glyphs = chars.reduce((sum, ch) => sum + font.widthOfTextAtSize(ch, size), 0);
+  return glyphs + spacing * Math.max(0, chars.length - 1);
+}
+
+// Draws text with letter-spacing. `base` is the baseline in design-grid (top-left) units.
+function drawSpaced(page, text, { x, base, font, size, color, spacing = 0, align = 'left' }) {
+  const chars = Array.from(String(text ?? ''));
+  const total = spacedWidth(text, font, size, spacing);
+  let cursor = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+
+  for (const ch of chars) {
+    if (ch.trim()) {
+      page.drawText(ch, { x: cursor, y: Y(base), size, font, color });
+    }
+    cursor += font.widthOfTextAtSize(ch, size) + spacing;
+  }
+}
+
+function drawText(page, text, { x, base, font, size, color, align = 'left' }) {
   const value = String(text ?? '');
-  const textWidth = font.widthOfTextAtSize(value, size);
-  page.drawText(value, { x: Math.max(25, (width - textWidth) / 2), y, size, font, color });
+  const width = font.widthOfTextAtSize(value, size);
+  const left = align === 'center' ? x - width / 2 : align === 'right' ? x - width : x;
+  page.drawText(value, { x: left, y: Y(base), size, font, color });
+}
+
+function roundedRectPath(w, h, r) {
+  return (
+    `M ${r} 0 H ${w - r} Q ${w} 0 ${w} ${r} V ${h - r} ` +
+    `Q ${w} ${h} ${w - r} ${h} H ${r} Q 0 ${h} 0 ${h - r} V ${r} Q 0 0 ${r} 0 Z`
+  );
+}
+
+function drawRoundedRect(page, { x, top, w, h, r, color, borderColor, borderWidth }) {
+  page.drawSvgPath(roundedRectPath(w, h, r), {
+    x,
+    y: Y(top),
+    color,
+    borderColor,
+    borderWidth
+  });
+}
+
+function hostOf(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
 }
 
 // ------------------------------------------------------------
-// CUSTOM GRAPHICS
+// LEFT BAND
 // ------------------------------------------------------------
-function drawSeal(page, cx, cy, fonts) {
-  // Outer solid circle
-  page.drawCircle({ x: cx, y: cy, size: 54, color: C.white, borderColor: C.brass, borderWidth: 1.5 });
-  // Inner dotted circle
-  const radius = 44;
-  const dots = 60;
-  for (let i = 0; i < dots; i++) {
-    const angle = (Math.PI * 2 * i) / dots;
-    const x = cx + radius * Math.cos(angle);
-    const y = cy + radius * Math.sin(angle);
-    page.drawCircle({ x, y, size: 0.8, color: C.brass });
+const BAND_WIDTH = 285;
+const BAND_CENTER = 142;
+const CONTENT_X = 380;
+const CONTENT_RIGHT = 1219;
+
+function drawBand(page, fonts, brand) {
+  // Band + gold stripe
+  page.drawRectangle({ x: 0, y: 0, width: BAND_WIDTH, height: H, color: C.band });
+  page.drawRectangle({ x: BAND_WIDTH, y: 0, width: 6, height: H, color: C.gold });
+
+  // Seal
+  page.drawCircle({ x: BAND_CENTER, y: Y(135), size: 62, color: C.bandDeep, borderColor: C.gold, borderWidth: 3 });
+  page.drawCircle({
+    x: BAND_CENTER,
+    y: Y(135),
+    size: 44,
+    borderColor: C.gold,
+    borderWidth: 1.2,
+    borderDashArray: [1.4, 3.6]
+  });
+  drawText(page, brand.monogram, {
+    x: BAND_CENTER,
+    base: 148,
+    font: fonts.bold,
+    size: 36,
+    color: C.white,
+    align: 'center'
+  });
+
+  // Wordmark badge
+  drawRoundedRect(page, { x: 67, top: 222, w: 151, h: 63, r: 10, color: C.cream });
+  drawSpaced(page, brand.shortName, {
+    x: BAND_CENTER,
+    base: 268,
+    font: fonts.bold,
+    size: 38,
+    color: C.title,
+    spacing: 1.5,
+    align: 'center'
+  });
+
+  // Tags
+  ['PEER-REVIEWED', 'OPEN ACCESS', 'DOI VIA FIGSHARE'].forEach((label, index) => {
+    drawSpaced(page, label, {
+      x: BAND_CENTER,
+      base: 309 + index * 20.5,
+      font: fonts.sans,
+      size: 13,
+      color: C.pale,
+      spacing: 2.2,
+      align: 'center'
+    });
+  });
+
+  if (brand.host) {
+    drawSpaced(page, sansSafe(brand.host, fonts), {
+      x: BAND_CENTER,
+      base: 391,
+      font: fonts.sans,
+      size: 17,
+      color: C.cream,
+      spacing: 1.2,
+      align: 'center'
+    });
   }
-  // Center text "IJ"
-  const text = 'IJ';
-  const textWidth = fonts.bold.widthOfTextAtSize(text, 38);
-  page.drawText(text, { x: cx - textWidth / 2, y: cy - 13, size: 38, font: fonts.bold, color: C.greenDark });
+}
+
+async function drawQr(page, pdf, fonts, verifyUrl) {
+  if (!verifyUrl) return;
+
+  const qrBuffer = await QRCode.toBuffer(verifyUrl, {
+    type: 'png',
+    width: 480,
+    margin: 0,
+    errorCorrectionLevel: 'H',
+    color: { dark: '#0f2a20', light: '#ffffff' }
+  });
+  const qrImage = await pdf.embedPng(qrBuffer);
+
+  // White tile inside the band, bottom-left
+  const tile = 116;
+  const tileX = BAND_CENTER - tile / 2;
+  const tileTop = 716;
+  page.drawRectangle({
+    x: tileX,
+    y: Y(tileTop + tile),
+    width: tile,
+    height: tile,
+    color: C.white,
+    borderColor: C.bandLine,
+    borderWidth: 2.5
+  });
+
+  const pad = 9;
+  page.drawImage(qrImage, {
+    x: tileX + pad,
+    y: Y(tileTop + tile - pad),
+    width: tile - pad * 2,
+    height: tile - pad * 2
+  });
+
+  drawSpaced(page, 'SCAN TO VERIFY', {
+    x: BAND_CENTER,
+    base: 852,
+    font: fonts.sans,
+    size: 12.5,
+    color: C.pale,
+    spacing: 1.6,
+    align: 'center'
+  });
+}
+
+// ------------------------------------------------------------
+// FIGSHARE / GOOGLE SCHOLAR PILL (top right)
+// ------------------------------------------------------------
+function drawLogoPill(page, logos) {
+  const available = logos.filter(Boolean);
+  if (!available.length) return;
+
+  const two = available.length === 2;
+  const pillW = two ? 394 : 250;
+  const pillH = 65;
+  const pillTop = 55;
+  const pillX = CONTENT_RIGHT - pillW;
+
+  drawRoundedRect(page, {
+    x: pillX,
+    top: pillTop,
+    w: pillW,
+    h: pillH,
+    r: 14,
+    color: C.pill,
+    borderColor: C.pillBorder,
+    borderWidth: 1
+  });
+
+  const pad = 24;
+  const gap = 32;
+  const boxW = (pillW - pad * 2 - gap * (available.length - 1)) / available.length;
+  const boxH = 44;
+
+  available.forEach((logo, index) => {
+    const boxX = pillX + pad + index * (boxW + gap);
+    const dims = logo.scaleToFit(boxW, boxH);
+    page.drawImage(logo, {
+      x: boxX + (boxW - dims.width) / 2,
+      y: Y(pillTop + pillH / 2) - dims.height / 2,
+      width: dims.width,
+      height: dims.height
+    });
+
+    if (index > 0) {
+      const dividerX = boxX - gap / 2;
+      page.drawLine({
+        start: { x: dividerX, y: Y(pillTop + 14) },
+        end: { x: dividerX, y: Y(pillTop + pillH - 14) },
+        thickness: 1,
+        color: C.divider
+      });
+    }
+  });
 }
 
 // ============================================================
-// 1. CERTIFICATE OF PUBLICATION (Forest Band Style)
+// 1. CERTIFICATE
 // ============================================================
 export async function generateCertificatePdf({ paper, certificate, verifyUrl }) {
   const pdf = await PDFDocument.create();
   const fonts = await loadFonts(pdf);
 
   const authorName = certificate.authorName || paper.authors?.[certificate.authorIndex]?.name || 'Author';
+  const coauthors = (paper.authors || [])
+    .filter((_, index) => index !== certificate.authorIndex)
+    .map((author) => author.name)
+    .filter(Boolean)
+    .join(', ');
+
   const journalName = process.env.JOURNAL_NAME || 'International Journal of Research and Open Science';
-  const shortName = (process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase();
+  const brand = {
+    shortName: String(process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase(),
+    monogram: String(process.env.JOURNAL_MONOGRAM || 'IJ').toUpperCase(),
+    host: hostOf(process.env.JOURNAL_WEBSITE) || 'ijros.com'
+  };
   const doi = paper.figshare?.doi || paper.doi || '';
-  const website = process.env.JOURNAL_WEBSITE || 'ijros.com';
+  const paperId = paper.id || 'N/A';
+  const certificateId = certificate.certificateId || 'N/A';
 
-  [paper.title, authorName, paper.id, certificate.certificateId, journalName, shortName, doi].forEach(t => checkFontText(t, fonts));
+  [paper.title, authorName, coauthors].forEach((item) => checkFontText(item, fonts));
 
-  // Landscape layout: 1000 x 700
-  const page = pdf.addPage([1000, 700]);
+  pdf.setTitle(`Certificate of Publication - ${paper.title || paperId}`);
+  pdf.setAuthor(journalName);
+  pdf.setSubject(`Certificate ${certificateId}`);
 
-  // 1. Backgrounds
-  page.drawRectangle({ x: 0, y: 0, width: 1000, height: 700, color: C.cream });
-  
-  // Left Forest Green Band (Width: 260)
-  page.drawRectangle({ x: 0, y: 0, width: 260, height: 700, color: C.greenDark });
+  const page = pdf.addPage([W, H]);
 
-  // 2. Left Band Content
-  drawSeal(page, 130, 520, fonts);
+  // Background + left band
+  page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: C.cream });
+  drawBand(page, fonts, brand);
+  await drawQr(page, pdf, fonts, verifyUrl);
 
-  drawCentered(page, shortName, 430, fonts.bold, 26, C.brass, 260);
-  
-  const indexing = [
-    'PEER-REVIEWED',
-    'OPEN ACCESS',
-    'DOI VIA FIGSHARE',
-    website
+  // Gold frame around the content area
+  page.drawRectangle({
+    x: 321,
+    y: Y(893),
+    width: 956,
+    height: 862,
+    borderColor: C.goldLine,
+    borderWidth: 1.3
+  });
+
+  // Logos (top right)
+  const figshareLogo = await loadImage(pdf, 'FIGSHARE_LOGO_PATH', 'public/brand/figshare.png');
+  const scholarLogo = await loadImage(pdf, 'GOOGLE_SCHOLAR_LOGO_PATH', 'public/brand/google-scholar.png');
+  drawLogoPill(page, [figshareLogo, scholarLogo]);
+
+  // Journal name
+  const journalUpper = sansSafe(journalName.toUpperCase(), fonts);
+  let journalSize = 14;
+  while (journalSize > 9 && spacedWidth(journalUpper, fonts.sans, journalSize, 3.2) > 800) journalSize -= 0.5;
+  drawSpaced(page, journalUpper, {
+    x: CONTENT_X,
+    base: 163,
+    font: fonts.sans,
+    size: journalSize,
+    color: C.goldText,
+    spacing: 3.2
+  });
+
+  // Title
+  drawText(page, 'Certificate of Publication', {
+    x: CONTENT_X,
+    base: 232,
+    font: fonts.bold,
+    size: 54,
+    color: C.title
+  });
+
+  drawSpaced(page, 'THIS IS TO CERTIFY THAT', {
+    x: CONTENT_X,
+    base: 282,
+    font: fonts.sans,
+    size: 14,
+    color: C.muted,
+    spacing: 2.6
+  });
+
+  // Author name (italic serif)
+  const contentWidth = 830;
+  const nameFit = fitText(authorName, fonts.italic, {
+    maxWidth: contentWidth,
+    maxHeight: 80,
+    maxSize: 66,
+    minSize: 30,
+    lineHeightRatio: 1.12
+  });
+  const nameBase = 357;
+  nameFit.lines.forEach((line, index) => {
+    drawText(page, line, {
+      x: CONTENT_X,
+      base: nameBase + index * nameFit.lineHeight,
+      font: fonts.italic,
+      size: nameFit.size,
+      color: C.ink
+    });
+  });
+  const lastNameBase = nameBase + (nameFit.lines.length - 1) * nameFit.lineHeight;
+
+  // "has authored..."
+  const descBase = lastNameBase + 33;
+  drawText(page, 'has authored the research paper entitled', {
+    x: CONTENT_X,
+    base: descBase,
+    font: fonts.regular,
+    size: 16,
+    color: C.muted
+  });
+
+  // Paper title
+  const titleBase = descBase + 45;
+  const titleFit = fitText(paper.title || 'Untitled manuscript', fonts.bold, {
+    maxWidth: contentWidth,
+    maxHeight: Math.max(60, 640 - titleBase),
+    maxSize: 28,
+    minSize: 14,
+    lineHeightRatio: 1.22
+  });
+  titleFit.lines.forEach((line, index) => {
+    drawText(page, line, {
+      x: CONTENT_X,
+      base: titleBase + index * titleFit.lineHeight,
+      font: fonts.bold,
+      size: titleFit.size,
+      color: C.ink
+    });
+  });
+  let cursor = titleBase + (titleFit.lines.length - 1) * titleFit.lineHeight;
+
+  // Co-authors (optional)
+  if (coauthors) {
+    const coFit = fitText(`Co-authors: ${coauthors}`, fonts.regular, {
+      maxWidth: contentWidth,
+      maxHeight: 40,
+      maxSize: 14,
+      minSize: 9,
+      lineHeightRatio: 1.25
+    });
+    cursor += 30;
+    coFit.lines.forEach((line, index) => {
+      drawText(page, line, {
+        x: CONTENT_X,
+        base: cursor + index * coFit.lineHeight,
+        font: fonts.regular,
+        size: coFit.size,
+        color: C.muted
+      });
+    });
+    cursor += (coFit.lines.length - 1) * coFit.lineHeight;
+  }
+
+  // Published line
+  const publishedAt = paper.publishedAt ? new Date(paper.publishedAt) : new Date();
+  const validDate = Number.isNaN(publishedAt.getTime()) ? new Date() : publishedAt;
+  const dateLabel = validDate.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  });
+
+  const volumeText = paper.volume
+    ? /^vol/i.test(String(paper.volume)) ? String(paper.volume) : `Volume ${paper.volume}`
+    : '';
+  const issueText = paper.issue
+    ? /^issue/i.test(String(paper.issue)) ? String(paper.issue) : `Issue ${paper.issue}`
+    : '';
+  const publishedLine = [`Published ${dateLabel}`, volumeText, issueText].filter(Boolean).join(' \u00b7 ');
+
+  const publishedBase = Math.min(cursor + 35, 745);
+  drawText(page, sansSafe(publishedLine, fonts), {
+    x: CONTENT_X,
+    base: publishedBase,
+    font: fonts.sans,
+    size: 15,
+    color: C.muted
+  });
+
+  // Footer: certificate / paper / DOI
+  const metaRows = [
+    ['Certificate ID', certificateId],
+    ['Paper ID', paperId]
   ];
-  let indexY = 380;
-  indexing.forEach(text => {
-    drawCentered(page, text, indexY, fonts.regular, 10, C.brassSoft, 260);
-    indexY -= 22;
+  if (doi) metaRows.push(['DOI', doi]);
+
+  const metaStart = doi ? 803 : 815;
+  const metaStep = 24.5;
+  metaRows.forEach(([label, value], index) => {
+    const base = metaStart + index * metaStep;
+    const labelText = sansSafe(label, fonts);
+    drawText(page, labelText, { x: CONTENT_X, base, font: fonts.sansBold, size: 14, color: C.ink });
+    const labelWidth = fonts.sansBold.widthOfTextAtSize(labelText, 14);
+    drawText(page, sansSafe(value, fonts), {
+      x: CONTENT_X + labelWidth + 7,
+      base,
+      font: fonts.sans,
+      size: 14,
+      color: C.muted
+    });
   });
 
-  // 3. Right Area Content
-  // QR Code (Top Right)
-  if (verifyUrl) {
-    const qr = await QRCode.toBuffer(verifyUrl, { type: 'png', width: 240, margin: 1, errorCorrectionLevel: 'H' });
-    const qrImage = await pdf.embedPng(qr);
-    page.drawImage(qrImage, { x: 880, y: 580, width: 70, height: 70 });
-    drawCentered(page, 'SCAN TO VERIFY', 565, fonts.bold, 7, C.greenDark, 1000); // approximate center
+  // Footer: editor signature
+  const signatureX = 1103;
+  const signatureBytes = await optionalFile('EDITOR_SIGNATURE_PATH', 'public/brand/editor-signature.png');
+  const signature = await embedImageBytes(pdf, signatureBytes, 'EDITOR_SIGNATURE_PATH');
+  if (signature) {
+    const dims = signature.scaleToFit(190, 52);
+    page.drawImage(signature, {
+      x: signatureX - dims.width / 2,
+      y: Y(809),
+      width: dims.width,
+      height: dims.height
+    });
   }
 
-  // Journal Name Header
-  const headerFit = fitText(journalName.toUpperCase(), fonts.bold, { maxWidth: 600, maxHeight: 20, maxSize: 11, minSize: 8 });
-  headerFit.lines.forEach((line, i) => {
-    page.drawText(line, { x: 320, y: 620 - (i * 14), size: headerFit.size, font: fonts.bold, color: C.inkMuted });
+  page.drawLine({
+    start: { x: 987, y: Y(813) },
+    end: { x: CONTENT_RIGHT + 1, y: Y(813) },
+    thickness: 1.2,
+    color: C.ink
+  });
+  drawText(page, 'Editorial Office', {
+    x: signatureX,
+    base: 836,
+    font: fonts.sansBold,
+    size: 15,
+    color: C.ink,
+    align: 'center'
+  });
+  drawText(page, sansSafe(`Editor, ${brand.shortName}`, fonts), {
+    x: signatureX,
+    base: 855,
+    font: fonts.sans,
+    size: 14,
+    color: C.muted,
+    align: 'center'
   });
 
-  // Main Title
-  page.drawText('Certificate of Publication', { x: 320, y: 540, size: 36, font: fonts.bold, color: C.greenDark });
-
-  // Certify Text
-  page.drawText('THIS IS TO CERTIFY THAT', { x: 320, y: 480, size: 10, font: fonts.bold, color: C.brass });
-
-  // Author Name
-  const nameFit = fitText(authorName, fonts.bold, { maxWidth: 620, maxHeight: 60, maxSize: 32, minSize: 18, lineHeightRatio: 1.1 });
-  let currentY = 420;
-  nameFit.lines.forEach((line) => {
-    page.drawText(line, { x: 320, y: currentY, size: nameFit.size, font: fonts.bold, color: C.ink });
-    currentY -= nameFit.lineHeight;
-  });
-
-  // Authored Text
-  page.drawText('has authored the research paper entitled', { x: 320, y: currentY - 10, size: 12, font: fonts.regular, color: C.inkLight });
-
-  // Paper Title (Bold, Italic)
-  const titleFit = fitText(paper.title, fonts.bold, { maxWidth: 600, maxHeight: 80, maxSize: 18, minSize: 10, lineHeightRatio: 1.3 });
-  let titleY = currentY - 50;
-  titleFit.lines.forEach((line) => {
-    page.drawText(line, { x: 320, y: titleY, size: titleFit.size, font: fonts.bold, color: C.ink });
-    titleY -= titleFit.lineHeight;
-  });
-
-  // 4. Bottom Metadata Area
-  const bottomY = 140;
-  page.drawLine({ start: { x: 320, y: bottomY + 30 }, end: { x: 950, y: bottomY + 30 }, thickness: 0.5, color: C.brass });
-
-  // Published Date & Volume/Issue
-  const pubDate = paper.publishedAt ? new Date(paper.publishedAt) : new Date();
-  const dateLabel = pubDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  const volText = paper.volume ? (String(paper.volume).toLowerCase().startsWith('vol') ? paper.volume : `Volume ${paper.volume}`) : '';
-  const issueText = paper.issue ? (String(paper.issue).toLowerCase().startsWith('issue') ? paper.issue : `Issue ${paper.issue}`) : '';
-  const pubLine = [`Published ${dateLabel}`, volText, issueText].filter(Boolean).join(' · ');
-  
-  page.drawText(pubLine, { x: 320, y: bottomY, size: 10, font: fonts.regular, color: C.inkLight });
-
-  // IDs
-  page.drawText(`Certificate ID ${certificate.certificateId}`, { x: 320, y: bottomY - 20, size: 9, font: fonts.regular, color: C.inkMuted });
-  page.drawText(`Paper ID ${paper.id}`, { x: 500, y: bottomY - 20, size: 9, font: fonts.regular, color: C.inkMuted });
-  if (doi) {
-    page.drawText(`DOI ${doi}`, { x: 320, y: bottomY - 36, size: 9, font: fonts.regular, color: C.greenDark });
+  // Scale the design grid to real A4 landscape (no-op if unsupported)
+  try {
+    const k = A4_LANDSCAPE_WIDTH / W;
+    if (typeof page.scale === 'function') page.scale(k, k);
+  } catch (error) {
+    console.error('Page scaling skipped:', error.message);
   }
-
-  // Editorial Office Sign-off (Bottom Right)
-  page.drawLine({ start: { x: 800, y: bottomY + 10 }, end: { x: 950, y: bottomY + 10 }, thickness: 0.8, color: C.ink });
-  page.drawText('Editorial Office', { x: 800, y: bottomY - 6, size: 10, font: fonts.bold, color: C.ink });
-  page.drawText(`Editor, ${shortName}`, { x: 800, y: bottomY - 20, size: 9, font: fonts.regular, color: C.inkMuted });
 
   return Buffer.from(await pdf.save());
 }
 
 // ============================================================
-// 2. PAYMENT RECEIPT (Matching Website Theme)
+// 2. PAYMENT RECEIPT (behaviour preserved, themed to match)
 // ============================================================
 export async function generatePaymentReceiptPdf({ paper, payment }) {
   const pdf = await PDFDocument.create();
   const fonts = await loadFonts(pdf);
 
-  const journalName = process.env.JOURNAL_NAME || 'International Journal of Research and Open Science';
-  const shortName = (process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase();
-  const issn = process.env.JOURNAL_ISSN || '';
-  const contactEmail = process.env.JOURNAL_EMAIL || process.env.JOURNAL_CONTACT_EMAIL || process.env.EDITORIAL_INBOX || '';
-  const website = process.env.JOURNAL_WEBSITE || '';
+  [paper.title, paper.id, paper.submitterName, paper.authors?.[0]?.name, payment.utr].forEach((item) =>
+    checkFontText(item, fonts)
+  );
 
-  [paper.title, paper.id, paper.submitterName, payment.utr].forEach(t => checkFontText(t, fonts));
-
-  // Portrait A4: 595 x 842
   const page = pdf.addPage([595, 842]);
   const { width, height } = page.getSize();
+  const shortName = String(process.env.JOURNAL_SHORT_NAME || 'IJROS').toUpperCase();
 
-  // 1. Background
-  page.drawRectangle({ x: 0, y: 0, width, height, color: C.cream });
+  page.drawRectangle({ x: 0, y: 0, width, height, color: C.white });
+  page.drawRectangle({ x: 26, y: 26, width: width - 52, height: height - 52, borderColor: C.band, borderWidth: 1.4 });
+  page.drawRectangle({ x: 26, y: height - 170, width: width - 52, height: 144, color: C.band });
+  page.drawRectangle({ x: 26, y: height - 174, width: width - 52, height: 4, color: C.gold });
 
-  // 2. Header Band
-  const headerHeight = 160;
-  page.drawRectangle({ x: 0, y: height - headerHeight, width, height: headerHeight, color: C.greenDark });
-  page.drawRectangle({ x: 0, y: height - headerHeight, width, height: 2, color: C.brass });
-
-  page.drawText(shortName, { x: 40, y: height - 60, size: 32, font: fonts.bold, color: C.white });
-  page.drawText('International Journal', { x: 40, y: height - 80, size: 9, font: fonts.regular, color: C.brassSoft });
-  
-  page.drawText('PAYMENT RECEIPT', { x: 40, y: height - 125, size: 22, font: fonts.bold, color: C.white });
-  page.drawText('Manual UPI payment confirmation · Official record', { x: 40, y: height - 145, size: 10, font: fonts.regular, color: C.brassSoft });
-
-  const marginX = 40;
-  const blockWidth = width - 80;
-  let y = height - headerHeight - 30;
-
-  // 3. Amount Block
-  page.drawRectangle({ x: marginX, y: y - 80, width: blockWidth, height: 80, color: C.greenSoft, borderColor: C.green, borderWidth: 0.5 });
-  page.drawText('AMOUNT RECEIVED', { x: marginX + 20, y: y - 25, size: 8, font: fonts.bold, color: C.greenDark });
-  page.drawText(`INR ${Number(payment.amount || 0).toFixed(2)}`, { x: marginX + 20, y: y - 60, size: 26, font: fonts.bold, color: C.greenDark });
-
-  // Verified Badge
-  const badgeW = 130;
-  const badgeH = 30;
-  page.drawRectangle({ x: marginX + blockWidth - badgeW - 20, y: y - 55, width: badgeW, height: badgeH, color: C.green });
-  const badgeText = 'PAYMENT VERIFIED';
-  const badgeTextW = fonts.bold.widthOfTextAtSize(badgeText, 8);
-  page.drawText(badgeText, { x: marginX + blockWidth - badgeW - 20 + (badgeW - badgeTextW) / 2, y: y - 45, size: 8, font: fonts.bold, color: C.white });
-
-  y -= 110;
-
-  // 4. Details Grid
-  const drawField = (label, value, isMuted = false) => {
-    page.drawText(label, { x: marginX, y, size: 9, font: fonts.bold, color: C.inkMuted });
-    const lines = wrapText(String(value || '—'), fonts.regular, 11, blockWidth - 160);
-    lines.forEach((line, i) => {
-      page.drawText(line, { x: marginX + 160, y: y - (i * 14), size: 11, font: fonts.regular, color: isMuted ? C.inkMuted : C.ink });
-    });
-    y -= (lines.length * 14) + 14;
-  };
-
-  const formatDate = (iso) => iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-
-  drawField('Receipt Reference', payment.receiptId || `RCPT-${paper.id}`);
-  drawField('Paper ID', paper.id);
-  drawField('Manuscript', paper.title);
-  drawField('Payer', paper.submitterName || paper.authors?.[0]?.name || 'Author');
-  drawField('UPI Reference (UTR)', payment.utr);
-  drawField('Payment Submitted', formatDate(payment.submittedAt));
-  drawField('Payment Verified', formatDate(payment.confirmedAt));
-  drawField('Status', 'CONFIRMED BY EDITORIAL OFFICE', true);
-
-  y -= 10;
-
-  // 5. Note Box
-  const noteText = 'This receipt confirms that the journal has marked the submitted UPI payment as received. Keep this document with your publication records. A receipt does not by itself constitute acceptance or publication of the manuscript.';
-  const noteLines = wrapText(noteText, fonts.regular, 9, blockWidth - 40);
-  const noteHeight = (noteLines.length * 13) + 24;
-
-  page.drawRectangle({ x: marginX, y: y - noteHeight, width: blockWidth, height: noteHeight, color: C.creamDeep, borderColor: C.line, borderWidth: 0.5 });
-  page.drawRectangle({ x: marginX, y: y - noteHeight, width: 3, height: noteHeight, color: C.brass });
-
-  let noteY = y - 16;
-  noteLines.forEach(line => {
-    page.drawText(line, { x: marginX + 16, y: noteY, size: 9, font: fonts.regular, color: C.inkLight });
-    noteY -= 13;
+  page.drawText(`${shortName} \u00b7 EDITORIAL OFFICE`, {
+    x: 52,
+    y: height - 62,
+    size: 11,
+    font: fonts.bold,
+    color: C.gold
+  });
+  page.drawText('PAYMENT RECEIPT', { x: 52, y: height - 111, size: 27, font: fonts.bold, color: C.white });
+  page.drawText('Manual UPI payment confirmation', {
+    x: 54,
+    y: height - 137,
+    size: 10,
+    font: fonts.regular,
+    color: C.white
   });
 
-  // 6. Footer
-  const footerY = 50;
-  page.drawLine({ start: { x: marginX, y: footerY + 30 }, end: { x: width - marginX, y: footerY + 30 }, thickness: 0.5, color: C.brass });
+  const fields = [
+    ['Receipt reference', payment.receiptId || `RCPT-${paper.id}`],
+    ['Paper ID', paper.id],
+    ['Manuscript', paper.title],
+    ['Payer / submitting author', paper.submitterName || paper.authors?.[0]?.name || 'Author'],
+    ['Amount received', `INR ${Number(payment.amount || 0).toFixed(2)}`],
+    ['UPI transaction reference (UTR)', payment.utr],
+    ['Payment submitted', payment.submittedAt ? new Date(payment.submittedAt).toLocaleString('en-IN') : ''],
+    ['Payment verified', payment.confirmedAt ? new Date(payment.confirmedAt).toLocaleString('en-IN') : ''],
+    ['Verification status', 'CONFIRMED BY EDITORIAL OFFICE']
+  ];
 
-  page.drawText(journalName, { x: marginX, y: footerY + 12, size: 9, font: fonts.bold, color: C.greenDark });
-  
-  const contactParts = [];
-  if (issn) contactParts.push(`ISSN ${issn}`);
-  if (website) contactParts.push(website);
-  if (contactEmail) contactParts.push(contactEmail);
-  
-  if (contactParts.length) {
-    page.drawText(contactParts.join('   ·   '), { x: marginX, y: footerY - 4, size: 8, font: fonts.regular, color: C.inkMuted });
+  let y = height - 220;
+  for (const [label, value] of fields) {
+    page.drawText(String(label), { x: 54, y, size: 9, font: fonts.bold, color: C.muted });
+    const lines = wrapText(String(value || ''), fonts.regular, 10, 455);
+    lines.slice(0, 2).forEach((line, index) => {
+      page.drawText(line, { x: 54, y: y - 17 - index * 13, size: 10, font: fonts.regular, color: C.ink });
+    });
+    y -= 52;
   }
 
-  const stamp = `${shortName} · Generated ${new Date().toLocaleDateString('en-IN')}`;
-  const stampW = fonts.regular.widthOfTextAtSize(stamp, 8);
-  page.drawText(stamp, { x: width - marginX - stampW, y: footerY - 4, size: 8, font: fonts.regular, color: C.inkMuted });
+  page.drawText('This receipt confirms that the journal marked the submitted UPI payment as received.', {
+    x: 54,
+    y: 104,
+    size: 8.5,
+    font: fonts.regular,
+    color: C.muted
+  });
+  page.drawText('Keep this receipt with your publication records.', {
+    x: 54,
+    y: 88,
+    size: 8.5,
+    font: fonts.regular,
+    color: C.muted
+  });
+  page.drawText(process.env.JOURNAL_NAME || 'International Journal of Research and Open Science', {
+    x: 54,
+    y: 56,
+    size: 8,
+    font: fonts.bold,
+    color: C.band
+  });
 
   return Buffer.from(await pdf.save());
 }

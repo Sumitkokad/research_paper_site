@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import QRCode from 'qrcode';
@@ -7,6 +6,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Copy,
+  Check,
   ShieldCheck,
   Smartphone
 } from 'lucide-react';
@@ -30,6 +30,7 @@ export default function Pay() {
 
   const [payment, setPayment] = useState(null);
   const [qr, setQr] = useState('');
+  const [qrFailed, setQrFailed] = useState(false);
   const [utr, setUtr] = useState('');
   const [note, setNote] = useState('');
 
@@ -37,9 +38,9 @@ export default function Pay() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState('idle'); // idle | copied | failed
 
-  // Load secure payment details and generate QR.
+  // Load secure payment details and generate the UPI QR code.
   useEffect(() => {
     let cancelled = false;
 
@@ -48,6 +49,7 @@ export default function Pay() {
       setError('');
       setPayment(null);
       setQr('');
+      setQrFailed(false);
 
       if (!token) {
         setError('A valid payment token from the acceptance email is required.');
@@ -64,14 +66,17 @@ export default function Pay() {
 
         setPayment(data);
 
-        const qrData = await QRCode.toDataURL(data.uri, {
-          width: 320,
-          margin: 2,
-          errorCorrectionLevel: 'M'
-        });
+        try {
+          const qrData = await QRCode.toDataURL(data.uri, {
+            width: 320,
+            margin: 2,
+            errorCorrectionLevel: 'M'
+          });
 
-        if (!cancelled) {
-          setQr(qrData);
+          if (!cancelled) setQr(qrData);
+        } catch {
+          // The UPI ID and the "Open UPI app" link still work without the QR.
+          if (!cancelled) setQrFailed(true);
         }
       } catch (err) {
         if (!cancelled) {
@@ -91,7 +96,7 @@ export default function Pay() {
     };
   }, [id, token]);
 
-  // Submit the actual 12-digit UTR.
+  // Submit the 12-digit UTR.
   async function handlePaymentSubmit(event) {
     event.preventDefault();
 
@@ -101,7 +106,7 @@ export default function Pay() {
     const reference = utr.trim();
 
     if (!/^\d{12}$/.test(reference)) {
-      setError('Please enter a valid 12-digit UTR / transaction reference.');
+      setError('Enter the 12-digit UTR shown in your UPI app.');
       return;
     }
 
@@ -117,7 +122,7 @@ export default function Pay() {
 
       setSuccess(
         result.message ||
-        'Payment reference submitted successfully. Awaiting editorial verification.'
+          'Payment reference submitted. The editorial office will verify it against the received transaction.'
       );
 
       setPayment((current) => ({
@@ -128,7 +133,7 @@ export default function Pay() {
       setUtr('');
       setNote('');
     } catch (err) {
-      setError(err.message || 'Unable to submit payment reference.');
+      setError(err.message || 'Unable to submit the payment reference.');
     } finally {
       setBusy(false);
     }
@@ -136,22 +141,19 @@ export default function Pay() {
 
   // Copy the UPI ID.
   async function copyVpa() {
-    if (!payment?.vpa) {
-      setError('UPI ID is unavailable.');
-      return;
-    }
+    if (!payment?.vpa) return;
 
     try {
       await navigator.clipboard.writeText(payment.vpa);
-      setCopied(true);
-
-      window.setTimeout(() => {
-        setCopied(false);
-      }, 1600);
+      setCopyState('copied');
     } catch {
-      setError('Could not copy the UPI ID.');
+      setCopyState('failed');
     }
+
+    window.setTimeout(() => setCopyState('idle'), 1800);
   }
+
+  const submitted = Boolean(success) || Boolean(payment?.submitted);
 
   return (
     <>
@@ -160,9 +162,8 @@ export default function Pay() {
         description="Submit UPI payment details for an accepted manuscript."
       />
 
-      <section className="payment-page">
-        <div className="container payment-container">
-
+      <section className="pay-page">
+        <div className="container pay-container">
           <Link to="/track" className="back-link">
             <ArrowLeft size={15} />
             Back to author services
@@ -171,7 +172,7 @@ export default function Pay() {
           {loading ? (
             <Loading label="Checking secure payment link" />
           ) : error && !payment ? (
-            <div className="payment-error">
+            <div className="pay-problem">
               <Notice type="error">{error}</Notice>
               <p>Ask the editorial office to issue a fresh payment link.</p>
               <Link className="button button-light" to="/contact">
@@ -179,183 +180,194 @@ export default function Pay() {
               </Link>
             </div>
           ) : payment ? (
-            <div className="payment-grid">
-
-              <div className="payment-copy">
-                <div className="eyebrow">
-                  Accepted manuscript · Payment step
-                </div>
-
-                <h1>
-                  Complete your
-                  <br />
-                  <em>publication fee.</em>
-                </h1>
-
-                <p className="payment-intro">
-                  Your manuscript has an acceptance decision. This step
-                  records your UPI payment for manual verification by the
-                  editorial office.
+            <>
+              <header className="pay-header">
+                <span className="eyebrow">Accepted manuscript</span>
+                <h1>Pay the publication fee</h1>
+                <p>
+                  Pay by UPI, then enter the transaction reference. The
+                  editorial office checks it manually before your paper is
+                  published.
                 </p>
+              </header>
 
-                <div className="payment-summary">
-                  <div>
-                    <span>Paper ID</span>
-                    <strong>{payment.paperId}</strong>
-                  </div>
+              <div className="pay-layout">
+                {/* ---------- Summary ---------- */}
+                <aside className="pay-summary" aria-label="Payment summary">
+                  <h2>Payment summary</h2>
 
-                  <div>
-                    <span>Manuscript</span>
-                    <strong>{payment.title}</strong>
-                  </div>
+                  <dl className="pay-facts">
+                    <div>
+                      <dt>Paper ID</dt>
+                      <dd className="pay-mono">{payment.paperId}</dd>
+                    </div>
+                    <div>
+                      <dt>Manuscript</dt>
+                      <dd>{payment.title}</dd>
+                    </div>
+                  </dl>
 
-                  <div>
+                  <div className="pay-amount">
                     <span>Amount due</span>
-                    <strong className="amount-text">
-                      {inr(payment.amount)}
-                    </strong>
+                    <strong>{inr(payment.amount)}</strong>
                   </div>
-                </div>
 
-                <div className="payment-security">
-                  <ShieldCheck size={18} />
-                  <p>
-                    Payment is not confirmed automatically. Your paper will
-                    be published only after an administrator checks the
-                    UTR against the received transaction.
-                  </p>
-                </div>
-              </div>
-
-              <div className="payment-card">
-
-                <div className="payment-card-head">
-                  <span className="payment-step">01</span>
-                  <div>
-                    <h2>Scan to pay with UPI</h2>
+                  <div className="pay-assurance">
+                    <ShieldCheck size={18} aria-hidden="true" />
                     <p>
-                      Open any UPI app and scan this paper-specific QR code.
+                      Payment is not confirmed automatically. Your paper is
+                      published only after an administrator matches the UTR
+                      to the received transaction.
                     </p>
                   </div>
-                </div>
+                </aside>
 
-                <div className="qr-frame">
-                  {qr ? (
-                    <img src={qr} alt="UPI payment QR code" />
-                  ) : (
-                    <div className="qr-placeholder" />
-                  )}
-                </div>
-
-                <div className="payee-info">
-                  <span>Verified beneficiary in your UPI app</span>
-                  <strong>{payment.payeeName}</strong>
-
-                  <div>
-                    <span className="upi-id">{payment.vpa}</span>
-
-                    <button
-                      type="button"
-                      className="copy-button"
-                      onClick={copyVpa}
-                      aria-label="Copy UPI ID"
-                    >
-                      <Copy size={14} />
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                  </div>
-                </div>
-
-                <a
-                  className="button button-primary button-full"
-                  href={payment.uri}
-                >
-                  <Smartphone size={16} />
-                  Open UPI app
-                </a>
-
-                <div className="payment-warning">
-                  <strong>Important:</strong> Before authorising payment,
-                  confirm that your UPI app shows the correct beneficiary
-                  name and the amount {inr(payment.amount)}. Do not pay if
-                  the verified name is unexpected. UPI apps may show the
-                  bank-verified account name instead of the name embedded
-                  in a QR.
-                </div>
-
-                {success ? (
-                  <Notice type="success">
-                    <CheckCircle2 size={16} />
-                    {success}
-                  </Notice>
-                ) : (
-                  <form
-                    className="utr-form"
-                    onSubmit={handlePaymentSubmit}
-                  >
-                    <div className="payment-card-head second">
-                      <span className="payment-step">02</span>
+                {/* ---------- Steps ---------- */}
+                <div className="pay-steps">
+                  <section className="pay-card" aria-labelledby="pay-step-1">
+                    <header className="pay-card-head">
+                      <span className="pay-step-no" aria-hidden="true">1</span>
                       <div>
-                        <h2>Submit transaction reference</h2>
-                        <p>
-                          After completing the transfer, enter the 12-digit
-                          UTR shown by your UPI app.
-                        </p>
+                        <h2 id="pay-step-1">Pay with UPI</h2>
+                        <p>Scan the code, or open your UPI app on this device.</p>
+                      </div>
+                    </header>
+
+                    <div className="pay-method">
+                      <div className="pay-qr">
+                        {qr ? (
+                          <img src={qr} alt="UPI payment QR code" />
+                        ) : qrFailed ? (
+                          <p className="pay-qr-fallback">
+                            QR code unavailable. Use the UPI ID instead.
+                          </p>
+                        ) : (
+                          <div className="pay-qr-skeleton" aria-hidden="true" />
+                        )}
+                      </div>
+
+                      <div className="pay-payee">
+                        <div className="pay-payee-row">
+                          <span className="pay-label">Beneficiary</span>
+                          <strong>{payment.payeeName}</strong>
+                        </div>
+
+                        <div className="pay-payee-row">
+                          <span className="pay-label">UPI ID</span>
+                          <div className="pay-vpa">
+                            <code>{payment.vpa}</code>
+                            <button
+                              type="button"
+                              className="pay-copy"
+                              onClick={copyVpa}
+                              aria-label="Copy UPI ID"
+                            >
+                              {copyState === 'copied' ? (
+                                <Check size={14} />
+                              ) : (
+                                <Copy size={14} />
+                              )}
+                              {copyState === 'copied'
+                                ? 'Copied'
+                                : copyState === 'failed'
+                                  ? 'Copy failed'
+                                  : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {payment.uri && (
+                          <a
+                            className="button button-primary button-full"
+                            href={payment.uri}
+                          >
+                            <Smartphone size={16} />
+                            Open UPI app
+                          </a>
+                        )}
                       </div>
                     </div>
 
-                    {error && <Notice type="error">{error}</Notice>}
+                    <div className="pay-warning" role="note">
+                      <strong>Check before you pay.</strong> Your UPI app should
+                      show the beneficiary above and the amount{' '}
+                      {inr(payment.amount)}. UPI apps may show the
+                      bank-verified account name instead of the name in the QR.
+                      Do not pay if the name is unexpected.
+                    </div>
+                  </section>
 
-                    <label className="field">
-                      <span>
-                        12-digit UTR / reference <b>*</b>
-                      </span>
+                  <section className="pay-card" aria-labelledby="pay-step-2">
+                    <header className="pay-card-head">
+                      <span className="pay-step-no" aria-hidden="true">2</span>
+                      <div>
+                        <h2 id="pay-step-2">Enter the transaction reference</h2>
+                        <p>
+                          After paying, copy the 12-digit UTR from your UPI app.
+                        </p>
+                      </div>
+                    </header>
 
-                      <input
-                        value={utr}
-                        onChange={(e) =>
-                          setUtr(
-                            e.target.value.replace(/\D/g, '').slice(0, 12)
-                          )
-                        }
-                        inputMode="numeric"
-                        autoComplete="off"
-                        pattern="[0-9]{12}"
-                        minLength={12}
-                        maxLength={12}
-                        placeholder="e.g. 123456789012"
-                        required
-                      />
+                    {submitted ? (
+                      <div className="pay-success" role="status">
+                        <CheckCircle2 size={20} aria-hidden="true" />
+                        <p>
+                          {success ||
+                            'A payment reference has already been submitted. The editorial office will verify it.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <form className="pay-form" onSubmit={handlePaymentSubmit}>
+                        {error && <Notice type="error">{error}</Notice>}
 
-                      <small>{utr.length}/12 digits</small>
-                    </label>
+                        <label className="field">
+                          <span>
+                            UTR / transaction reference <b>*</b>
+                          </span>
 
-                    <label className="field">
-                      <span>Optional note</span>
-                      <input
-                        value={note}
-                        onChange={(e) => setNote(e.target.value.slice(0, 180))}
-                        maxLength={180}
-                        placeholder="Any note for the accounts team"
-                      />
-                    </label>
+                          <input
+                            className="pay-utr"
+                            value={utr}
+                            onChange={(e) =>
+                              setUtr(e.target.value.replace(/\D/g, '').slice(0, 12))
+                            }
+                            inputMode="numeric"
+                            autoComplete="off"
+                            pattern="[0-9]{12}"
+                            minLength={12}
+                            maxLength={12}
+                            placeholder="123456789012"
+                            required
+                          />
 
-                    <button
-                      className="button button-gold button-full"
-                      type="submit"
-                      disabled={busy || utr.length !== 12}
-                    >
-                      {busy
-                        ? 'Submitting UTR…'
-                        : 'Submit payment reference'}
-                      <ArrowRight size={16} />
-                    </button>
-                  </form>
-                )}
+                          <small className="pay-counter">{utr.length}/12 digits</small>
+                        </label>
+
+                        <label className="field">
+                          <span>Note for the accounts team (optional)</span>
+                          <input
+                            value={note}
+                            onChange={(e) => setNote(e.target.value.slice(0, 180))}
+                            maxLength={180}
+                            placeholder="Anything we should know about this payment"
+                          />
+                        </label>
+
+                        <button
+                          className="button button-gold button-full"
+                          type="submit"
+                          disabled={busy || utr.length !== 12}
+                        >
+                          {busy ? 'Submitting…' : 'Submit payment reference'}
+                          <ArrowRight size={16} />
+                        </button>
+                      </form>
+                    )}
+                  </section>
+                </div>
               </div>
-            </div>
+            </>
           ) : null}
-
         </div>
       </section>
     </>
