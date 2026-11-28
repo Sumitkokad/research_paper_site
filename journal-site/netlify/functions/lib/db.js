@@ -41,7 +41,6 @@
 // }
 
 
-
 import oracledb from 'oracledb';
 
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
@@ -91,7 +90,11 @@ export async function query(sql, binds = [], options = {}) {
   const conn = await getConnection();
 
   try {
-    const result = await conn.execute(sql, binds, options);
+    const result = await conn.execute(sql, binds, {
+      // ✅ REQUIRED: enables named binds like :paper_id, :raw_json
+      bindByName: true,
+      ...options
+    });
     return result.rows || [];
   } finally {
     await conn.close();
@@ -102,7 +105,11 @@ export async function execute(sql, binds = [], options = { autoCommit: true }) {
   const conn = await getConnection();
 
   try {
-    return await conn.execute(sql, binds, options);
+    return await conn.execute(sql, binds, {
+      // ✅ REQUIRED: enables named binds like :paper_id, :raw_json
+      bindByName: true,
+      ...options
+    });
   } finally {
     await conn.close();
   }
