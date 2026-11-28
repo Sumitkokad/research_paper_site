@@ -203,14 +203,14 @@
 
 
 
-
 import oracledb from 'oracledb';
 import { query, execute } from './db.js';
 import { uploadFile, downloadFile } from './storage.js';
 
 // ---- Oracle configuration -----------------------------------------------
 
-const TS_MASK = `'YYYY-MM-DD"T"HH24:MI:SS`;
+// ✅ FIX: closing single quote added after SS
+const TS_MASK = `'YYYY-MM-DD"T"HH24:MI:SS'`;
 
 // Convert dates to Oracle-compatible ISO timestamps.
 function ts(value) {
