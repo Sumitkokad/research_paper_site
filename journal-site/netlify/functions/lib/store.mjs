@@ -1,434 +1,194 @@
+import oracledb from 'oracledb';
+import { query, execute } from './db.js';
+import { uploadFile, downloadFile } from './storage.js';
 
-const API_ROOT = 'https://api.github.com';
-const REQUEST_TIMEOUT_MS = 20000;
-const MAX_RETRIES = 5;
+// ---- small helpers -------------------------------------------------------
 
-const EMPTY_DB = () => ({
-  schemaVersion: 1,
-  papers: [],
-  rateLimits: {},
-  events: [],
-  updatedAt: new Date().toISOString()
-});
-
-function settings() {
-  const owner = process.env.GH_OWNER;
-  const repo = process.env.GH_REPO;
-  const token = process.env.GH_TOKEN;
-  const branch = process.env.GH_BRANCH || 'main';
-
-  if (!owner || !repo || !token) {
-    throw new Error(
-      'GitHub storage is not configured. Set GH_OWNER, GH_REPO and GH_TOKEN.'
-    );
-  }
-
-  return { owner, repo, token, branch };
+// Oracle needs an explicit format for ISO dates (the "T" and "Z" break the default one).
+const TS_MASK = `'YYYY-MM-DD"T"HH24:MI:SS'`;
+function ts(value) {
+  const d = value ? new Date(value) : new Date();
+  return (Number.isNaN(d.getTime()) ? new Date() : d).toISOString().slice(0, 19);
 }
 
-function endpoint(path) {
-  const { owner, repo } = settings();
-
-  return `${API_ROOT}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path
-    .split('/')
-    .map(encodeURIComponent)
-    .join('/')}`;
+// Cut text to the column size so a long value can't crash the insert (ORA-12899).
+function cut(value, max) {
+  if (value === undefined || value === null) return null;
+  return String(value).slice(0, max);
 }
 
-function blobEndpoint(sha) {
-  const { owner, repo } = settings();
-
-  return `${API_ROOT}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/blobs/${encodeURIComponent(sha)}`;
+// raw_data can come back as a string, or already as an object depending on the column type.
+function parseRaw(value) {
+  if (value === undefined || value === null) return null;
+  return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
-function headers(accept = 'application/vnd.github+json') {
-  const { token } = settings();
+// ---- public API (same names/signatures as before) ------------------------
 
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: accept,
-    'X-GitHub-Api-Version': '2022-11-28',
-    'Content-Type': 'application/json',
-    'User-Agent': 'ijros-Journal-Platform'
-  };
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function retryDelay(attempt, response) {
-  const retryAfter = Number(response?.headers?.get('retry-after'));
-
-  if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    return Math.min(retryAfter * 1000, 30000);
-  }
-
-  const reset = Number(response?.headers?.get('x-ratelimit-reset'));
-
-  if (
-    response?.status === 403 &&
-    Number.isFinite(reset) &&
-    reset > 0
-  ) {
-    const wait = reset * 1000 - Date.now();
-
-    if (wait > 0) return Math.min(wait, 30000);
-  }
-
-  return Math.min(500 * (2 ** attempt), 8000);
-}
-
-function isRetryableStatus(status) {
-  return status === 429 || status >= 500;
-}
-
-async function githubRequest(url, options = {}, retries = MAX_RETRIES) {
-  let lastError;
-
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    let response;
-
-    try {
-      response = await fetch(url, {
-        ...options,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-      });
-    } catch (error) {
-      lastError = error;
-
-      if (attempt >= retries) break;
-
-      await sleep(Math.min(500 * (2 ** attempt), 8000));
-      continue;
-    }
-
-    if (response.ok || response.status === 404) {
-      return response;
-    }
-
-    const detail = await response.text();
-
-    const rateLimited =
-      response.status === 403 &&
-      (
-        response.headers.get('x-ratelimit-remaining') === '0' ||
-        detail.toLowerCase().includes('rate limit')
-      );
-
-    if (
-      (isRetryableStatus(response.status) || rateLimited) &&
-      attempt < retries
-    ) {
-      await sleep(retryDelay(attempt, response));
-      continue;
-    }
-
-    const error = new Error(
-      `GitHub API request failed (${response.status}): ${detail.slice(0, 1200)}`
-    );
-
-    error.status = response.status;
-    error.responseBody = detail;
-
-    throw error;
-  }
-
-  throw new Error(
-    `GitHub API request failed after retries: ${lastError?.message || 'Network timeout'}`
-  );
-}
-
-function isShaConflict(status, detail = '') {
-  if (status === 409) return true;
-
-  if (status !== 422) return false;
-
-  const message = String(detail).toLowerCase();
-
-  return (
-    message.includes('sha') ||
-    message.includes('does not match') ||
-    message.includes('already exists') ||
-    message.includes('must match')
-  );
-}
-
-async function getFileInfo(path) {
-  const { branch } = settings();
-
-  const response = await githubRequest(
-    `${endpoint(path)}?ref=${encodeURIComponent(branch)}`,
-    { headers: headers() }
-  );
-
-  if (response.status === 404) return null;
-
-  return response.json();
-}
-
-async function readBlob(sha) {
-  const response = await githubRequest(
-    blobEndpoint(sha),
-    { headers: headers() }
-  );
-
-  const blob = await response.json();
-
-  if (blob.encoding !== 'base64' || !blob.content) {
-    throw new Error('GitHub returned an unsupported file encoding.');
-  }
-
-  return Buffer.from(
-    blob.content.replace(/\n/g, ''),
-    'base64'
-  );
-}
-
-export async function readJSON(path = 'db.json') {
-  const info = await getFileInfo(path);
-
-  if (!info) return null;
-
-  let buffer;
-
-  if (info.encoding === 'base64' && info.content) {
-    buffer = Buffer.from(
-      info.content.replace(/\n/g, ''),
-      'base64'
-    );
-  } else if (info.sha) {
-    // Contents API may omit content for larger files.
-    buffer = await readBlob(info.sha);
-  } else {
-    throw new Error(
-      `GitHub JSON file ${path} has no readable content or blob SHA.`
-    );
-  }
-
-  let data;
-
-  try {
-    data = JSON.parse(buffer.toString('utf8'));
-  } catch {
-    throw new Error(
-      `GitHub JSON file ${path} contains invalid JSON. No changes were saved.`
-    );
-  }
-
-  return {
-    data,
-    sha: info.sha
-  };
-}
-
-async function putFile(path, content, sha, commitMessage) {
-  const { branch } = settings();
-
-  const body = {
-    message: commitMessage,
-    branch,
-    content: Buffer.from(content).toString('base64'),
-    ...(sha ? { sha } : {})
-  };
-
-  const response = await githubRequest(
-    endpoint(path),
-    {
-      method: 'PUT',
-      headers: headers(),
-      body: JSON.stringify(body)
-    },
-    2
-  );
-
-  if (response.status === 409) {
-    return { conflict: true };
-  }
-
-  const result = await response.json();
-
-  return {
-    conflict: false,
-    sha: result.content?.sha || null
-  };
-}
-
-async function writeJSONWithSha(path, data, sha, commitMessage) {
-  const content = JSON.stringify(data, null, 2);
-
-  try {
-    return await putFile(path, content, sha, commitMessage);
-  } catch (error) {
-    if (isShaConflict(error.status, error.responseBody)) {
-      return { conflict: true };
-    }
-
-    throw error;
-  }
-}
-
-export async function writeJSON(
-  path,
-  data,
-  commitMessage = `Update ${path}`
-) {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
-    const current = await getFileInfo(path);
-
-    const result = await writeJSONWithSha(
-      path,
-      data,
-      current?.sha || null,
-      commitMessage
-    );
-
-    if (!result.conflict) return result.sha;
-
-    await sleep(250 * (attempt + 1));
-  }
-
-  throw new Error(
-    `Could not update ${path}: repeated GitHub SHA conflicts. Please retry.`
-  );
-}
-
-export async function updateDatabase(
-  mutator,
-  commitMessage = 'Update journal database'
-) {
-  if (typeof mutator !== 'function') {
-    throw new TypeError('Database mutator must be a function.');
-  }
-
-  for (let attempt = 0; attempt < MAX_RETRIES + 1; attempt += 1) {
-    // Always load the newest version before applying the mutation.
-    const loaded = await readJSON('db.json');
-    const db = loaded?.data || EMPTY_DB();
-
-    if (!Array.isArray(db.papers)) db.papers = [];
-    if (!db.rateLimits || typeof db.rateLimits !== 'object') {
-      db.rateLimits = {};
-    }
-    if (!Array.isArray(db.events)) db.events = [];
-
-    const result = await mutator(db);
-
-    db.schemaVersion = 1;
-    db.updatedAt = new Date().toISOString();
-
-    const saved = await writeJSONWithSha(
-      'db.json',
-      db,
-      loaded?.sha || null,
-      commitMessage
-    );
-
-    if (!saved.conflict) {
-      return result === undefined ? db : result;
-    }
-
-    await sleep(250 * (attempt + 1));
-  }
-
-  throw new Error(
-    'Database update failed because of repeated concurrent changes. Please retry.'
-  );
+export async function isStoreConfigured() {
+  return Boolean(process.env.ORACLE_DB_CONNECT_STRING && process.env.OCI_S3_ACCESS_KEY);
 }
 
 export async function readDatabase() {
-  const loaded = await readJSON('db.json');
+  const papersRows = await query('SELECT raw_data FROM papers');
+  const papers = papersRows.map(row => parseRaw(row.RAW_DATA)).filter(Boolean);
 
-  if (!loaded) return EMPTY_DB();
-
-  const db = loaded.data;
-
-  if (!db || typeof db !== 'object' || Array.isArray(db)) {
-    throw new Error('GitHub db.json has an invalid database structure.');
+  const rateLimitsRows = await query('SELECT limit_key, count, started_at FROM rate_limits');
+  const rateLimits = {};
+  for (const row of rateLimitsRows) {
+    rateLimits[row.LIMIT_KEY] = { count: row.COUNT, startedAt: row.STARTED_AT };
   }
 
-  if (!Array.isArray(db.papers)) db.papers = [];
-  if (!db.rateLimits || typeof db.rateLimits !== 'object') {
-    db.rateLimits = {};
-  }
-  if (!Array.isArray(db.events)) db.events = [];
-
-  return db;
+  return { schemaVersion: 1, papers, rateLimits, updatedAt: new Date().toISOString() };
 }
 
-export async function writeBinary(
-  path,
-  buffer,
-  commitMessage = `Upload ${path}`
-) {
-  if (!Buffer.isBuffer(buffer)) {
-    buffer = Buffer.from(buffer);
-  }
+async function findOrCreateUser(email, name) {
+  if (!email) return null;
+  const find = async () => {
+    const rows = await query('SELECT user_id FROM users WHERE email = :email', { email });
+    return rows.length > 0 ? rows[0].USER_ID : null;
+  };
 
-  if (buffer.length === 0) {
-    throw new Error(`Cannot upload an empty file: ${path}`);
-  }
+  const existing = await find();
+  if (existing !== null) return existing;
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
-    const current = await getFileInfo(path);
-
-    try {
-      const result = await putFile(
-        path,
-        buffer,
-        current?.sha || null,
-        commitMessage
-      );
-
-      if (!result.conflict) return result.sha;
-    } catch (error) {
-      if (!isShaConflict(error.status, error.responseBody)) {
-        throw error;
+  try {
+    const res = await execute(
+      'INSERT INTO users (email, name) VALUES (:email, :name) RETURNING user_id INTO :id',
+      {
+        email,
+        name,
+        id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
       }
+    );
+    return res.outBinds.id[0];
+  } catch (err) {
+    // Two requests created the same user at once (unique email) -> just read it back.
+    if (err && err.errorNum === 1) {
+      const again = await find();
+      if (again !== null) return again;
+    }
+    throw err;
+  }
+}
+
+export async function updateDatabase(mutator, commitMessage = 'Update') {
+  const db = await readDatabase();
+  const result = await mutator(db);
+
+  // Some callers return the whole database object, others return just a result value
+  // (e.g. the new paper). In the second case we must still save `db`, which the
+  // mutator changed in place.
+  const returnedDb =
+    result && typeof result === 'object' && Array.isArray(result.papers) ? result : null;
+  const updatedDb = returnedDb || db;
+
+  if (!Array.isArray(updatedDb.papers)) {
+    throw new Error('updateDatabase: database object has no "papers" array');
+  }
+
+  const existingRows = await query('SELECT paper_id, raw_data FROM papers');
+  const existingMap = new Map(existingRows.map(r => [r.PAPER_ID, r.RAW_DATA]));
+
+  for (const paper of updatedDb.papers) {
+    const newRaw = JSON.stringify(paper);
+    if (newRaw === existingMap.get(paper.id)) continue; // nothing changed
+
+    const submitterEmail = cut(paper.submitterEmail || '', 255);
+    const submitterName = cut(paper.submitterName || '', 255);
+
+    // 1. Find or create the user
+    const userId = await findOrCreateUser(submitterEmail, submitterName);
+
+    // 2. Upsert the paper (raw JSON is kept so the site reads exactly what it wrote)
+    await execute(
+      `MERGE INTO papers t
+       USING (SELECT :id AS paper_id FROM dual) s
+       ON (t.paper_id = s.paper_id)
+       WHEN MATCHED THEN UPDATE SET
+         user_id = :user_id, title = :title, status = :status,
+         figshare_id = :figshare_id, doi = :doi, pdf_key = :pdf_key, raw_data = :raw_data
+       WHEN NOT MATCHED THEN INSERT
+         (paper_id, user_id, title, status, figshare_id, doi, pdf_key, submitted_at, raw_data)
+         VALUES (:id, :user_id, :title, :status, :figshare_id, :doi, :pdf_key,
+                 TO_TIMESTAMP(:submitted_at, ${TS_MASK}), :raw_data)`,
+      {
+        id: cut(paper.id, 50),
+        user_id: userId,
+        title: cut(paper.title, 500),
+        status: cut(paper.status, 30),
+        figshare_id: cut(paper.figshare?.articleId, 100),
+        doi: cut(paper.figshare?.doi, 150),
+        pdf_key: cut(paper.currentFilePath, 300),
+        submitted_at: ts(paper.submittedAt),
+        raw_data: newRaw
+      }
+    );
+
+    // 3. Upsert the payment
+    if (paper.payment && paper.payment.utr) {
+      const p = paper.payment;
+      await execute(
+        `MERGE INTO payments t
+         USING (SELECT :tid AS transaction_id FROM dual) s
+         ON (t.transaction_id = s.transaction_id)
+         WHEN MATCHED THEN UPDATE SET amount = :amount, status = :status,
+           paid_at = TO_TIMESTAMP(:paid_at, ${TS_MASK})
+         WHEN NOT MATCHED THEN INSERT (transaction_id, paper_id, user_id, amount, status, paid_at)
+           VALUES (:tid, :pid, :uid, :amount, :status, TO_TIMESTAMP(:paid_at, ${TS_MASK}))`,
+        {
+          tid: cut(p.utr, 100),
+          pid: cut(paper.id, 50),
+          uid: userId,
+          amount: Number(p.amount) || 0,
+          status: cut(p.status || 'submitted', 30),
+          paid_at: ts(p.confirmedAt || p.submittedAt)
+        }
+      );
     }
 
-    await sleep(250 * (attempt + 1));
+    // 4. Insert any new certificates
+    if (Array.isArray(paper.certificates)) {
+      for (const cert of paper.certificates) {
+        if (!cert.filePath || !cert.certificateId) continue;
+        await execute(
+          `MERGE INTO certificates t
+           USING (SELECT :vid AS verify_code FROM dual) s
+           ON (t.verify_code = s.verify_code)
+           WHEN NOT MATCHED THEN INSERT (verify_code, paper_id, cert_key, issued_at)
+             VALUES (:vid, :pid, :ckey, TO_TIMESTAMP(:iat, ${TS_MASK}))`,
+          {
+            vid: cut(cert.certificateId, 60),
+            pid: cut(paper.id, 50),
+            ckey: cut(cert.filePath, 300),
+            iat: ts(cert.generatedAt)
+          }
+        );
+      }
+    }
   }
 
-  throw new Error(
-    `Could not upload ${path}: repeated GitHub SHA conflicts.`
-  );
+  // Rate limits (unchanged behaviour)
+  for (const [key, val] of Object.entries(updatedDb.rateLimits || {})) {
+    await execute(
+      `MERGE INTO rate_limits t
+       USING (SELECT :k AS limit_key FROM dual) s
+       ON (t.limit_key = s.limit_key)
+       WHEN MATCHED THEN UPDATE SET count = :c, started_at = :sa
+       WHEN NOT MATCHED THEN INSERT (limit_key, count, started_at) VALUES (:k, :c, :sa)`,
+      { k: key, c: val.count, sa: val.startedAt }
+    );
+  }
+
+  return result === undefined ? updatedDb : result;
+}
+
+export async function writeBinary(path, buffer, commitMessage) {
+  await uploadFile(path, buffer);
+  return 'success';
 }
 
 export async function readBinary(path) {
-  const { branch } = settings();
-
-  const response = await githubRequest(
-    `${endpoint(path)}?ref=${encodeURIComponent(branch)}`,
-    { headers: headers() }
-  );
-
-  if (response.status === 404) return null;
-
-  const contentType = response.headers.get('content-type') || '';
-
-  if (contentType.includes('application/json')) {
-    const info = await response.json();
-
-    if (info.encoding === 'base64' && info.content) {
-      return Buffer.from(
-        info.content.replace(/\n/g, ''),
-        'base64'
-      );
-    }
-
-    if (info.sha) return readBlob(info.sha);
-
-    throw new Error(`GitHub could not return binary content for ${path}.`);
-  }
-
-  return Buffer.from(await response.arrayBuffer());
-}
-
-export function isStoreConfigured() {
-  return Boolean(
-    process.env.GH_OWNER &&
-    process.env.GH_REPO &&
-    process.env.GH_TOKEN
-  );
+  if (!path) return null;
+  return await downloadFile(path);
 }

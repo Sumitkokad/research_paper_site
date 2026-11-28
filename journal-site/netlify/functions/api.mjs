@@ -2792,7 +2792,7 @@ export default async (request, context) => {
       return json(
         {
           error:
-            'GitHub storage is not configured. Add the GH_* environment variables in Netlify.'
+            'Database storage is not configured. Check Oracle environment variables.'
         },
         503
       );
