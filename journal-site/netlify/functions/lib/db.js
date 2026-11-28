@@ -1,30 +1,98 @@
+// import oracledb from 'oracledb';
+
+// oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
+// // Return CLOB columns (like raw_data) as normal strings instead of stream objects.
+// oracledb.fetchAsString = [oracledb.CLOB];
+
+// let pool;
+
+// export async function getConnection() {
+//   if (!pool) {
+//     pool = await oracledb.createPool({
+//       user: process.env.ORACLE_DB_USER,
+//       password: process.env.ORACLE_DB_PASSWORD,
+//       connectString: process.env.ORACLE_DB_CONNECT_STRING,
+//       poolMin: 0,
+//       poolMax: 5,
+//       poolIncrement: 1
+//     });
+//   }
+//   return await pool.getConnection();
+// }
+
+// export async function query(sql, binds = [], options = {}) {
+//   const conn = await getConnection();
+//   try {
+//     const result = await conn.execute(sql, binds, options);
+//     return result.rows;
+//   } finally {
+//     await conn.close();
+//   }
+// }
+
+// export async function execute(sql, binds = [], options = { autoCommit: true }) {
+//   const conn = await getConnection();
+//   try {
+//     const result = await conn.execute(sql, binds, options);
+//     return result;
+//   } finally {
+//     await conn.close();
+//   }
+// }
+
+
+
 import oracledb from 'oracledb';
 
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
-// Return CLOB columns (like raw_data) as normal strings instead of stream objects.
 oracledb.fetchAsString = [oracledb.CLOB];
 
-let pool;
+let poolPromise;
 
 export async function getConnection() {
-  if (!pool) {
-    pool = await oracledb.createPool({
+  // Check required environment variables
+  const required = [
+    'ORACLE_DB_USER',
+    'ORACLE_DB_PASSWORD',
+    'ORACLE_DB_CONNECT_STRING'
+  ];
+
+  for (const key of required) {
+    if (!process.env[key]) {
+      throw new Error(`Missing environment variable: ${key}`);
+    }
+  }
+
+  // Create only one pool per running Node.js instance
+  if (!poolPromise) {
+    poolPromise = oracledb.createPool({
       user: process.env.ORACLE_DB_USER,
       password: process.env.ORACLE_DB_PASSWORD,
       connectString: process.env.ORACLE_DB_CONNECT_STRING,
+
       poolMin: 0,
       poolMax: 5,
-      poolIncrement: 1
+      poolIncrement: 1,
+
+      poolTimeout: 60,
+      poolPingInterval: 60,
+      queueTimeout: 30000
+    }).catch(error => {
+      poolPromise = null;
+      throw error;
     });
   }
-  return await pool.getConnection();
+
+  const pool = await poolPromise;
+  return pool.getConnection();
 }
 
 export async function query(sql, binds = [], options = {}) {
   const conn = await getConnection();
+
   try {
     const result = await conn.execute(sql, binds, options);
-    return result.rows;
+    return result.rows || [];
   } finally {
     await conn.close();
   }
@@ -32,10 +100,18 @@ export async function query(sql, binds = [], options = {}) {
 
 export async function execute(sql, binds = [], options = { autoCommit: true }) {
   const conn = await getConnection();
+
   try {
-    const result = await conn.execute(sql, binds, options);
-    return result;
+    return await conn.execute(sql, binds, options);
   } finally {
     await conn.close();
+  }
+}
+
+export async function closePool() {
+  if (poolPromise) {
+    const pool = await poolPromise;
+    await pool.close(10);
+    poolPromise = null;
   }
 }
