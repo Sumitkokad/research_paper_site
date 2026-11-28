@@ -832,6 +832,30 @@
 //   generatePaymentReceiptPdf({ paper, payment })
 // ============================================================
 
+
+// ============================================================
+// IJROS CERTIFICATE & PAYMENT RECEIPT GENERATOR
+// "Ribbon Banner" layout  -  Netlify ES module
+//
+// Layout, everything centred:
+//   header : Figshare logo | IJ seal | Google Scholar logo
+//   title  : journal name + folded green "CERTIFICATE OF PUBLICATION" ribbon
+//   body   : author (italic), ornament, paper title, co-authors, publish line
+//   footer : certificate / paper / DOI (left), editor signature (centre),
+//            verification QR code (right)
+//
+// Exports (unchanged):
+//   generateCertificatePdf({ paper, certificate, verifyUrl })
+//   generatePaymentReceiptPdf({ paper, payment })
+//
+// CHANGE IN THIS VERSION
+//   Header logos are now fitted into fixed boxes (see LOGO_BOXES), so the
+//   Figshare and Google Scholar logos look the same size. Use the trimmed
+//   logo files that come with this update (public/brand/*.png): the old
+//   Google Scholar PNG had a lot of empty space around the text, which made
+//   it look tiny.
+// ============================================================
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1246,26 +1270,45 @@ function drawSeal(page, fonts, monogram) {
   });
 }
 
-function drawLogo(page, logo, centerX, targetH, maxW) {
+// ------------------------------------------------------------
+// LOGO SIZING
+// Each logo is scaled to fit inside its own box (aspect ratio kept) and
+// centred on the header row. To make a logo bigger or smaller, change only
+// its `w` (max width) and `h` (max height) below; whichever is reached first
+// limits the size.
+//
+//   figshare : wide mark + text, roughly 3.3 : 1  -> limited by height
+//   scholar  : trimmed wordmark, roughly 6.4 : 1  -> limited by width
+//
+// The two boxes are chosen so both logos read as the same visual size.
+// ------------------------------------------------------------
+const LOGO_BOXES = {
+  figshare: { cx: 383.5, w: 176, h: 54 },
+  scholar: { cx: 739.5, w: 190, h: 54 }
+};
+
+function drawLogo(page, logo, box) {
   if (!logo) return;
-  let w = (logo.width * targetH) / logo.height;
-  let h = targetH;
-  if (w > maxW) {
-    w = maxW;
-    h = (logo.height * maxW) / logo.width;
-  }
-  page.drawImage(logo, { x: centerX - w / 2, y: Y(HEADER_Y) - h / 2, width: w, height: h });
+  const scale = Math.min(box.w / logo.width, box.h / logo.height);
+  const w = logo.width * scale;
+  const h = logo.height * scale;
+  page.drawImage(logo, {
+    x: box.cx - w / 2,
+    y: Y(HEADER_Y) - h / 2,
+    width: w,
+    height: h
+  });
 }
 
 function drawHeader(page, fonts, brand, logos) {
   safely('header lines', () => {
-    fadeLine(page, { x1: 118, x2: 268, y: HEADER_Y, fadeIn: true, color: C.gold });
-    fadeLine(page, { x1: 855, x2: 1005, y: HEADER_Y, fadeIn: false, color: C.gold });
+    fadeLine(page, { x1: 118, x2: 258, y: HEADER_Y, fadeIn: true, color: C.gold });
+    fadeLine(page, { x1: 865, x2: 1005, y: HEADER_Y, fadeIn: false, color: C.gold });
   });
   safely('seal', () => drawSeal(page, fonts, brand.monogram));
   safely('logos', () => {
-    drawLogo(page, logos.figshare, 383.5, 42, 180);
-    drawLogo(page, logos.scholar, 739.5, 24, 180);
+    drawLogo(page, logos.figshare, LOGO_BOXES.figshare);
+    drawLogo(page, logos.scholar, LOGO_BOXES.scholar);
   });
 }
 
